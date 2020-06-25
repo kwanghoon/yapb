@@ -11,8 +11,8 @@
 - conv-exe: a grammar format utility for conversion of a readable grammar (.lgrm) format into the Haskell data format (.grm)
 - syncomp-exe: a syntax completion server for Emacs
 - Examples: 
--- parser-exe: an arithmetic parser
--- polyrpc-exe: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and an poly cs interpter.
+  - parser-exe: an arithmetic parser
+  - polyrpc-exe: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and an poly cs interpter.
 
 ### Download and build
 ~~~
@@ -156,7 +156,7 @@
 - Parser tool architecture
   * <img src="https://github.com/kwanghoon/genlrparser/blob/master/doc/parsertoolarchitecture.png"/>
 - C++/Java/Python parser builder systems using YAPB
--- [Java parser](https://github.com/kwanghoon/swlab_parser_builder)
--- [C++ parser](https://github.com/tlsdorye/swlab-parser-lib)
--- [Python parser](https://github.com/limjintack/swlab_parser_python).
+  - [Java parser](https://github.com/kwanghoon/swlab_parser_builder)
+  - [C++ parser](https://github.com/tlsdorye/swlab-parser-lib)
+  - [Python parser](https://github.com/limjintack/swlab_parser_python).
 
