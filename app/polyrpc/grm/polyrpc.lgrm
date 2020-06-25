@@ -1,0 +1,187 @@
+; This is an example of a human-readable grammar format
+; To convert it into the format by the parser tool
+;  $ stack exec conv-exe grm/polyrpc.lgrm
+
+@start TopLevel
+
+Identifiers
+  = identifier
+  | identifier Identifiers
+
+OptIdentifiers
+  =
+  | Identifiers
+
+IdentifierCommas
+  = identifier
+  | identifier , IdentifierCommas
+
+OptIdentifierCommas
+  =
+  | IdentifierCommas
+
+
+;; Grammar for locations
+Location
+  = identifier
+
+Locations
+  = Identifiers
+  
+;; Grammar for types
+
+Type
+  = LocFunType
+  | { Identifiers } . Type
+  | [ Identifiers ] . Type
+
+LocFunType
+  = AppType
+  | AppType LocFun LocFunType
+
+AppType
+  = AtomicType
+  | AppType { Locations }
+  | AppType [ LocFunTypes ]
+
+; LocFunTypes instead of Types in AtomicType [ LocFunTypes ]
+
+AtomicType
+  = TupleType
+  | ( Type )
+  | identifier
+
+
+TupleType
+  = ( Type , TypeSeq )
+
+TypeSeq
+  = Type
+  | Type , TypeSeq
+
+LocFunTypes
+  = LocFunType
+  | LocFunType LocFunTypes
+
+OptLocFunTypes
+  =
+  | LocFunTypes
+
+;; Grammar for terms
+
+TopLevel
+  = Binding
+  | Binding ; TopLevel
+  | DataTypeDecl
+  | DataTypeDecl ; TopLevel
+
+DataTypeDecl
+  = data identifier = DataTypeDeclRHS
+
+DataTypeDeclRHS
+  = TypeConDecls 
+  | { Identifiers } . DataTypeDeclRHS
+  | [ Identifiers ] . DataTypeDeclRHS 
+
+TypeConDecl
+  = identifier OptLocFunTypes
+
+TypeConDecls
+  = TypeConDecl
+  | TypeConDecl | TypeConDecls
+
+Binding
+  = identifier : Type = LExpr
+    
+Bindings
+  = Binding 
+  | Binding ; Bindings
+
+LExpr
+  = { Identifiers } . LExpr
+  | [ Identifiers ] . LExpr
+  | \ IdTypeLocSeq . LExpr
+  | let { Bindings } LExpr end
+  | if Expr then LExpr else LExpr
+  | case Expr { Alternatives } 
+  | Expr
+
+IdTypeLocSeq
+  = IdTypeLoc
+  | IdTypeLoc IdTypeLocSeq
+
+IdTypeLoc
+  = identifier : Type @ Location
+
+Alternatives
+  = Alternative
+  | Alternative ; Alternatives
+
+Alternative
+  = identifier OptIdentifiers => LExpr
+  | ( OptIdentifierCommas ) => LExpr
+
+Expr
+  = Expr Term
+  | Expr [ LocFunTypes ]
+  | Expr { Identifiers }
+  | Tuple
+  | AssignExpr
+
+Tuple
+  = ( LExpr , LExprSeq )
+     
+LExprSeq
+  = LExpr 
+  | LExpr , LExprSeq
+
+AssignExpr
+  = DerefExpr
+  | DerefExpr := { Identifiers } [ LocFunTypes ] AssignExpr
+
+DerefExpr
+  = ! { Identifiers } [ LocFunTypes ] DerefExpr
+  | LogicOr
+
+LogicOr
+  = LogicOr or LogicAnd
+  | LogicAnd
+
+LogicAnd
+  = LogicAnd and CompEqNeq
+  | CompEqNeq
+
+CompEqNeq
+  = CompEqNeq == Comp
+  | CompEqNeq != Comp
+  | Comp
+
+Comp
+  = Comp < ArithAddSub
+  | Comp <= ArithAddSub
+  | Comp > ArithAddSub
+  | Comp >= ArithAddSub
+  | ArithAddSub
+
+ArithAddSub
+  = ArithAddSub + ArithMulDiv
+  | ArithAddSub - ArithMulDiv
+  | ArithMulDiv
+
+ArithMulDiv
+  = ArithMulDiv * ArithUnary
+  | ArithMulDiv / ArithUnary
+  | ArithUnary
+      
+ArithUnary
+  = - Term
+  | Term
+
+Term
+  = identifier
+  | integer
+  | string
+  | boolean
+  | ( )
+  | ( LExpr )
+

@@ -1,0 +1,86 @@
+; This is an example of a human-readable grammar format
+; To convert it into the format by the parser tool
+;  $ stack exec conv-exe grm/polyrpc.lgrm
+
+@start DataTypeDecl
+
+Identifiers
+  = identifier
+  | identifier Identifiers
+
+OptIdentifiers
+  =
+  | Identifiers
+
+IdentifierCommas
+  = identifier
+  | identifier , IdentifierCommas
+
+OptIdentifierCommas
+  =
+  | IdentifierCommas
+
+;; Grammar for locations
+Location
+  = identifier
+
+Locations
+  = Identifiers
+
+;; Grammar for types
+
+Type
+  = LocFunType
+  | [ Identifiers ] . Type
+  | { Identifiers } . Type
+
+LocFunType
+  = AppType
+  | AppType LocFun LocFunType
+
+AppType
+  = AtomicType
+  | AppType [ LocFunTypes ]
+  | AppType { Locations }
+
+; LocFunTypes instead of Types in AtomicType [ LocFun Types ]
+
+AtomicType
+  = TupleType
+  | ( Type )
+  | identifier
+
+
+TupleType
+  = ( Type , TypeSeq )
+
+TypeSeq
+  = Type
+  | Type , TypeSeq
+
+LocFunTypes
+  = LocFunType
+  | LocFunType LocFunTypes
+
+OptLocFunTypes
+  =
+  | LocFunTypes
+
+;; Grammar for terms
+
+DataTypeDecl
+  = data identifier = DataTypeDeclRHS
+
+DataTypeDeclRHS
+  = TypeConDecls 
+  | { Identifiers } . DataTypeDeclRHS
+  | [ Identifiers ] . DataTypeDeclRHS 
+
+TypeConDecl
+  = identifier OptLocFunTypes
+
+TypeConDecls
+  = TypeConDecl
+  | TypeConDecl | TypeConDecls
+
+

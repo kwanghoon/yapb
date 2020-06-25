@@ -1,0 +1,45 @@
+
+
+
+LR/LALR 문법 작성하는 요령
+
+1. 연산자 우선순위에 따른 생산규칙 작성 방법
+
+   a) +는 *보다 우선순위가 낮다.
+   b) +, *는 왼쪽결합을 적용
+   
+       E = E + T
+       E = T
+       T = T * F
+       T = F
+       F = id
+       F = num
+
+
+2. 인라이닝으로 reduce/shift conflit 해결
+
+   a) OptLhs를 inline
+
+   (before)
+   
+   Statement -> OptLhs identifier . OptIdentifier ( Exprs ) { Properties } ;
+
+   OptLhs ->
+   OptLhs -> identifier =
+
+
+   (after)
+   
+   Statement -> identifier . OptIdentifier ( Exprs ) { Properties } ;
+   Statement -> identifier = identifier . OptIdentifier ( Exprs ) { Properties } ;
+
+
+
+  =>
+
+   action rule을 중복해서 작성하는 문제가 발생
+   따라서 parser 작성은 위와 같이 하되, inline 옵션을 적용해서 shift/reduce conflict를
+   해결하면서도 action rule을 중복해서 작성하는 문제를 해결
+
+
+

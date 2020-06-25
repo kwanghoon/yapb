@@ -1,0 +1,168 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: b91bb4f82de8e326aaf65599c5b83bac6442f97659a40ab5f7eb672a919e2873
+
+name:           yapb
+version:        0.1.0
+synopsis:       Yet Another Parser Builder (YAPB)
+description:    A programmable LALR(1) parser builder system. Please see the README on GitHub at <https://github.com/kwanghoon/yapb#readme>
+category:       parser builder
+homepage:       https://github.com/kwanghoon/yapb#readme
+bug-reports:    https://github.com/kwanghoon/yapb/issues
+author:         Kwanghoon Choi
+maintainer:     lazyswamp@gmail.com
+copyright:      2020 Kwanghoon Choi
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/kwanghoon/yapb
+
+library
+  exposed-modules:
+      CFG
+      CmdArgs
+      ParserTable
+      GenLRParserTable
+      SampleGrammar
+      CodeGenC
+      TokenInterface
+      Terminal
+      CommonParserUtil
+      SaveProdRules
+      AutomatonType
+      LoadAutomaton
+      ReadGrammar
+  other-modules:
+      Paths_yapb
+  hs-source-dirs:
+      src/gentable/
+      src/parserlib/
+      src/util/
+  build-depends:
+      base >=4.7 && <5
+    , directory
+    , hashable
+    , process >=1.4.3
+    , regex-tdfa
+  default-language: Haskell2010
+
+executable conv-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_yapb
+  hs-source-dirs:
+      app/conv
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , yapb
+  default-language: Haskell2010
+
+executable parser-exe
+  main-is: Main.hs
+  other-modules:
+      Lexer
+      Parser
+      Token
+      Expr
+      Paths_yapb
+  hs-source-dirs:
+      app/parser
+      app/parser/ast
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , regex-tdfa
+    , yapb
+  default-language: Haskell2010
+
+executable polyrpc-exe
+  main-is: Main.hs
+  other-modules:
+      Compile
+      Execute
+      Lexer
+      Parser
+      Token
+      TypeCheck
+      Verify
+      BasicLib
+      Expr
+      Literal
+      Location
+      Prim
+      Type
+      CSExpr
+      CSType
+      Paths_yapb
+  hs-source-dirs:
+      app/polyrpc
+      app/polyrpc/ast
+      app/polyrpc/cs
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , aeson-pretty
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , json >=0.10
+    , pretty
+    , prettyprinter
+    , regex-tdfa
+    , yapb
+  default-language: Haskell2010
+
+executable syncomp-exe
+  main-is: Main.hs
+  other-modules:
+      EmacsServer
+      Lexer
+      Parser
+      Token
+      Paths_yapb
+  hs-source-dirs:
+      app/syntaxcompletion
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , network >=3.1.1.1
+    , regex-tdfa
+    , yapb
+  default-language: Haskell2010
+
+executable yapb-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_yapb
+  hs-source-dirs:
+      app/yapb
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , yapb
+  default-language: Haskell2010
+
+test-suite yapb-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_yapb
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , yapb
+  default-language: Haskell2010

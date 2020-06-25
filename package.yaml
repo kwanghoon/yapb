@@ -1,0 +1,152 @@
+name:                yapb
+version:             0.1.0
+github:              "kwanghoon/yapb"
+license:             BSD3
+author:              "Kwanghoon Choi"
+maintainer:          "lazyswamp@gmail.com"
+copyright:           "2020 Kwanghoon Choi"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+synopsis:            Yet Another Parser Builder (YAPB)
+category:            parser builder
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         A programmable LALR(1) parser builder system. Please see the README on GitHub at <https://github.com/kwanghoon/yapb#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+# --------------------------------------------------
+# -- Main library: YAPB (Yet Another Parser Builder)
+# --------------------------------------------------
+library:
+  source-dirs:
+   - src/gentable/
+   - src/parserlib/
+   - src/util/
+  exposed-modules:
+   - CFG
+   - CmdArgs
+   - ParserTable
+   - GenLRParserTable
+   - SampleGrammar
+   - CodeGenC
+   - TokenInterface
+   - Terminal
+   - CommonParserUtil
+   - SaveProdRules
+   - AutomatonType
+   - LoadAutomaton
+   - ReadGrammar
+  
+  dependencies:
+  - regex-tdfa
+  - hashable
+  - directory
+  - process >= 1.4.3
+   
+
+executables:
+# ----------------------------------------
+# -- Utility1: A wrapper interface to YAPB
+# ----------------------------------------
+  yapb-exe:
+    main:                Main.hs
+    source-dirs:         app/yapb
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - yapb
+
+# ------------------------------------------------------------------------------------
+# -- Utility2: A grammar converter utility of a readable form into a Haskell data form
+# -------------------------------------------------------------------------------------
+  conv-exe:
+    main:                Main.hs
+    source-dirs:         app/conv
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - yapb
+
+# ----------------------------------------
+# -- Utiliyt3: A syntax completion server
+# ----------------------------------------
+  syncomp-exe:
+    main:                Main.hs
+    source-dirs:         app/syntaxcompletion
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - regex-tdfa
+    - yapb
+    - network >= 3.1.1.1
+    - bytestring
+
+# ---------------------------------
+# -- Example1: An arithmetic parser
+# ---------------------------------
+  parser-exe:
+    main:                Main.hs
+    
+    source-dirs:
+    - app/parser
+    - app/parser/ast
+    
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - regex-tdfa
+    - yapb
+
+
+# --------------------------------------------------
+# -- Example2: A polyrpc programming language system
+# --------------------------------------------------
+  polyrpc-exe:
+    main:                Main.hs
+    source-dirs:
+    - app/polyrpc
+    - app/polyrpc/ast
+    - app/polyrpc/cs
+    
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    
+    dependencies:
+    - regex-tdfa
+    - bytestring
+    - aeson
+    - aeson-pretty
+    - prettyprinter
+    - json >= 0.10
+    - pretty
+    - yapb
+    - containers
+
+tests:
+  yapb-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - yapb
