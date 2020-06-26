@@ -12,7 +12,7 @@
 - syncomp-exe: a syntax completion server for Emacs
 - Examples: 
   - parser-exe: an arithmetic parser
-  - polyrpc-exe: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and an poly cs interpter.
+  - polyrpc-exe: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and a poly cs interpter.
 
 ### Download and build
 ~~~
@@ -153,10 +153,10 @@
 ### Documents
 - [Parser generators sharing LR automaton generators and accepting general-purpose programming language-based specifications, J. of KIISE, 47(1), January 2020](http://swlab.jnu.ac.kr/paper/kiise202001.pdf) Written in Korean.
 - [A topdown approach to writing a compiler](https://github.com/kwanghoon/swlab_parser_builder/blob/master/doc/tutorial_swlab_parser_builder.txt) Written in Korean.
-- Parser tool architecture
-  * <img src="https://github.com/kwanghoon/genlrparser/blob/master/doc/parsertoolarchitecture.png"/>
 - C++/Java/Python parser builder systems using YAPB
   - [Java parser](https://github.com/kwanghoon/swlab_parser_builder)
   - [C++ parser](https://github.com/tlsdorye/swlab-parser-lib)
   - [Python parser](https://github.com/limjintack/swlab_parser_python).
+  - Architecture
+    * <img src="https://github.com/kwanghoon/genlrparser/blob/master/doc/parsertoolarchitecture.png"/>
 
