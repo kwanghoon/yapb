@@ -46,10 +46,10 @@ library:
    - ReadGrammar
   
   dependencies:
-  - regex-tdfa
-  - hashable
-  - directory
-  - process >= 1.4.3
+  - regex-tdfa    >= 1.3.1 && < 1.4
+  - hashable      >= 1.3.0 && < 1.4
+  - directory     >= 1.3.3 && < 1.4
+  - process       >= 1.6.5 && < 1.7
    
 
 executables:
@@ -92,8 +92,8 @@ executables:
     dependencies:
     - regex-tdfa
     - yapb
-    - network >= 3.1.1.1
-    - bytestring
+    - network     >= 3.1.1 && < 3.2
+    - bytestring  >= 0.10.8 && < 0.11
 
 # ---------------------------------
 # -- Example1: An arithmetic parser
@@ -132,13 +132,13 @@ executables:
     dependencies:
     - regex-tdfa
     - bytestring
-    - aeson
-    - aeson-pretty
-    - prettyprinter
-    - json >= 0.10
-    - pretty
+    - aeson          >= 1.4.7 && < 1.5
+    - aeson-pretty   >= 0.8.8 && < 0.9
+    - prettyprinter  >= 1.6.1 && < 1.7
+    - json           >= 0.10 && < 0.11
+    - pretty         >= 1.1.3 && < 1.2
     - yapb
-    - containers
+    - containers     >= 0.6.0 && < 0.7
 
 tests:
   yapb-test:
