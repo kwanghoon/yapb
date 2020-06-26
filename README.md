@@ -158,5 +158,5 @@
   - [C++ parser](https://github.com/tlsdorye/swlab-parser-lib)
   - [Python parser](https://github.com/limjintack/swlab_parser_python).
   - Architecture
-    * <img src="https://github.com/kwanghoon/genlrparser/blob/master/doc/parsertoolarchitecture.png"/>
+    * <img src="https://github.com/kwanghoon/yapb/blob/master/doc/parsertoolarchitecture.png"/>
 
