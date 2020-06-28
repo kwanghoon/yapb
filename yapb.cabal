@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e881da2ea178ebd7058733e4799dcb71397d62fbd02354126f43a5f2eda11afc
+-- hash: 541ce1dea3f56c48e14f0d9a5ad31e4065516053ab3b37358fe8c967685056a6
 
 name:           yapb
 version:        0.1.0
@@ -129,6 +129,7 @@ executable syncomp-exe
       EmacsServer
       Lexer
       Parser
+      SynCompInterface
       Token
       Paths_yapb
   hs-source-dirs:
