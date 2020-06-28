@@ -39,5 +39,5 @@ parserSpec = ParserSpec
     gotoTblFile = "goto_table.txt",
     grammarFile = "prod_rules.txt",
     parserSpecFile = "mygrammar.grm",
-    genparserexe = "genlrparser-exe"
+    genparserexe = "yapb-exe"
   }
