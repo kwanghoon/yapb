@@ -164,7 +164,7 @@ parsing parserSpec terminalList = do
 
   -- 2. If the grammar file is written,
   --    run the following command to generate prod_rules/action_table/goto_table files.
-  --     stack exec -- genlrparser-exe mygrammar.grm -output prod_rules.txt action_table.txt goto_table.txt
+  --     stack exec -- yapb-exe mygrammar.grm -output prod_rules.txt action_table.txt goto_table.txt
   when writtenBool generateAutomaton
 
   -- 3. Load automaton files (prod_rules/action_table/goto_table.txt)
@@ -191,7 +191,7 @@ parsing parserSpec terminalList = do
     generateAutomaton = do
       exitCode <- rawSystem "stack"
                   [ "exec", "--",
-                    "genlrparser-exe", specFileName, "-output",
+                    "yapb-exe", specFileName, "-output",
                     grammarFileName, actionTblFileName, gotoTblFileName
                   ]
       case exitCode of
