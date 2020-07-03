@@ -21,8 +21,8 @@ emacsServer f = do
 acceptLoop :: ComputeCandidate -> Socket -> IO ()
 acceptLoop computeCand sock = forever $ do
     (conn, _) <- accept sock
-    cursorPos <- getCursorPos conn
-    print cursorPos
+    (cursorPos, isSimple) <- getCursorPos_and_isSimple conn
+    print (cursorPos, isSimple)
     (conn, _) <- accept sock
     str <- getSource conn
     print str
@@ -32,13 +32,15 @@ acceptLoop computeCand sock = forever $ do
     sendCandidateList conn candidateList
     close conn
 
-str2int :: String -> Int
-str2int str = read str :: Int
+str2cursorPos_and_isSimple :: String -> (Int,Bool)
+str2cursorPos_and_isSimple str =
+  let [s1,s2] = Prelude.words str
+  in (read s1 :: Int, read s2 :: Bool)
 
-getCursorPos :: Socket -> IO Int
-getCursorPos conn = do
+getCursorPos_and_isSimple :: Socket -> IO (Int, Bool)
+getCursorPos_and_isSimple conn = do
     str <- recv conn 64
-    return (str2int (unpack str))
+    return (str2cursorPos_and_isSimple (unpack str))
 
 getSource :: Socket -> IO String
 getSource conn = do
