@@ -27,13 +27,20 @@
   (connect-server)
   (set-process-filter
    (get-process "syntaxa") 
-   (lambda (process output) 
-     (let* ((outputList (toList output))
-	    (cands (cdr outputList))
-	    )
-	   (let ((name (popup-menu* cands)))
-	     (insert name)))))
-  )
+   (lambda (process output)
+     (message "output: %s" output)
+     (cond ((string= output "LexError") ; Lexical error
+	    (message "There is some lexical error up to the cursor position."))
+	   ((string= output "SuccessfullyParsed") ; Successfully parsed
+	    (message "Successfully parsed so that there are no candidates."))
+	   (t 
+	    (let* ((outputList (toList output))
+		   (cands (cdr outputList))
+		   )
+	      (if (= (length cands) 1)
+		  (insert (car cands))
+		(let ((name (popup-menu* cands)))
+		  (insert name)))))))))
 
 (defun connect-server ()
   (setq buf (get-buffer-create "syntax1"))
