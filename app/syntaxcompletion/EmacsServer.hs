@@ -8,7 +8,7 @@ import Data.ByteString.Char8
 import Control.Monad
 import Control.Exception
 
-type ComputeCandidate = String -> Int -> IO [EmacsDataItem]
+type ComputeCandidate = String -> Bool -> Int -> IO [EmacsDataItem]
 
 emacsServer :: ComputeCandidate -> IO ()
 emacsServer f = do
@@ -26,7 +26,7 @@ acceptLoop computeCand sock = forever $ do
     (conn, _) <- accept sock
     str <- getSource conn
     print str
-    candidateList <- computeCand str cursorPos
+    candidateList <- computeCand str isSimple cursorPos
     print (Prelude.map show candidateList)
     (conn, _) <- accept sock
     sendCandidateList conn candidateList

@@ -23,8 +23,8 @@ main = do
 
 -- Computing candidates for syntax completion
 
-computeCand :: String -> Int -> IO [EmacsDataItem]
-computeCand str cursorPos = ((do
+computeCand :: String -> Bool -> Int -> IO [EmacsDataItem]
+computeCand str isSimple cursorPos = ((do
   terminalList <- lexing lexerSpec str 
   ast <- parsing parserSpec terminalList 
   return [SuccessfullyParsed])
@@ -32,7 +32,7 @@ computeCand str cursorPos = ((do
   `catch` \e -> case e :: ParseError Token AST of
                   NotFoundAction _ state stk actTbl gotoTbl prodRules pFunList terminalList ->
                     if length terminalList  == 1 then do -- [$]
-                      candidates <- compCandidates False [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
+                      candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
                       -- mapM_ putStr strs
@@ -41,7 +41,7 @@ computeCand str cursorPos = ((do
                       return [SynCompInterface.ParseError (map terminalToString terminalList)]
                   NotFoundGoto state _ stk actTbl gotoTbl prodRules pFunList terminalList ->
                     if length terminalList == 1 then do -- [$]
-                      candidates <- compCandidates False [] state actTbl gotoTbl prodRules pFunList stk
+                      candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
                       -- mapM_ putStr strs
