@@ -31,6 +31,8 @@
      (message "output: %s" output)
      (cond ((string= output "LexError") ; Lexical error
 	    (message "There is some lexical error up to the cursor position."))
+	   ((string= output "ParseError") ; Parse error
+	    (message "There is some parse error up to the cursor position."))
 	   ((string= output "SuccessfullyParsed") ; Successfully parsed
 	    (message "Successfully parsed so that there are no candidates."))
 	   (t 
