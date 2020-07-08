@@ -35,7 +35,8 @@ computeCand str isSimple cursorPos = ((do
                       candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
-                      -- mapM_ putStr strs
+                      let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
+                      mapM_ (putStrLn . show) rawStrs
                       return $ map Candidate strs
                     else
                       return [SynCompInterface.ParseError (map terminalToString terminalList)]
@@ -44,13 +45,17 @@ computeCand str isSimple cursorPos = ((do
                       candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
-                      -- mapM_ putStr strs
+                      let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
+                      mapM_ (putStrLn . show) rawStrs
                       return $ map Candidate strs
                     else
                       return [SynCompInterface.ParseError (map terminalToString terminalList)]
                       
 showSymbol (TerminalSymbol s) = s
 showSymbol (NonterminalSymbol _) = "..."
+
+showRawSymbol (TerminalSymbol s) = s
+showRawSymbol (NonterminalSymbol s) = s
 
 concatStrList [] = "" -- error "The empty candidate?"
 concatStrList [str] = str
