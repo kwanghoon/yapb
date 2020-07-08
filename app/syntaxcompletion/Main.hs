@@ -32,7 +32,7 @@ computeCand str isSimple cursorPos = ((do
   `catch` \e -> case e :: ParseError Token AST of
                   NotFoundAction _ state stk actTbl gotoTbl prodRules pFunList terminalList ->
                     if length terminalList  == 1 then do -- [$]
-                      candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
+                      candidates <- compCandidates isSimple 0 [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
                       let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
@@ -42,7 +42,7 @@ computeCand str isSimple cursorPos = ((do
                       return [SynCompInterface.ParseError (map terminalToString terminalList)]
                   NotFoundGoto state _ stk actTbl gotoTbl prodRules pFunList terminalList ->
                     if length terminalList == 1 then do -- [$]
-                      candidates <- compCandidates isSimple [] state actTbl gotoTbl prodRules pFunList stk
+                      candidates <- compCandidates isSimple 0 [] state actTbl gotoTbl prodRules pFunList stk
                       let cands = candidates
                       let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
                       let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]

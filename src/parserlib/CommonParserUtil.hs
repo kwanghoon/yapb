@@ -354,6 +354,8 @@ flag = True
 debug :: String -> IO ()
 debug msg = if flag then putStrLn msg else return ()
 
+prlevel n = take n (let spaces = ' ' : spaces in spaces)
+
 --
 data Candidate =
     TerminalSymbol String
@@ -361,52 +363,66 @@ data Candidate =
   deriving (Show,Eq)
 
 compCandidates :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-  Bool -> [Candidate] -> Int -> ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> Stack token ast -> IO [[Candidate]]
+  Bool -> Int -> [Candidate] -> Int -> ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> Stack token ast -> IO [[Candidate]]
   
-compCandidates isSimple symbols state actTbl gotoTbl prodRules pFunList stk = do
-  debug (show symbols)
+compCandidates isSimple level symbols state actTbl gotoTbl prodRules pFunList stk = do
+  debug (prlevel level ++ show symbols)
   case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl, state==s] of
    [] ->
-     case [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTbl, state==fromState] of
-       [] -> 
-         let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl, state==s] in
-         case cand2 of
-           [] -> if length [True | ((s,lookahead),Accept) <- actTbl, state==s] >= 1
-                 then do 
-                        debug $ "DONE: " ++ show [symbols] ++ "\n"
-                        return [] -- symbols == [')',')',')']
-                 else error "[compCand]: Something wrong"
-                          
-           _  -> do listOfList <-
-                       mapM (\(terminal,snext)->
+     case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTbl, state==fromState] of
+       [] ->
+         if length [True | ((s,lookahead),Accept) <- actTbl, state==s] >= 1
+         then do 
+                debug $ prlevel level ++ "DONE: " ++ show [symbols] ++ "\n"
+                return [] -- symbols == [')',')',')']
+         else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl, state==s] in
+              let len = length cand2 in
+              case cand2 of
+               [] -> return []
+               
+               _  -> do listOfList <-
+                         mapM (\((terminal,snext),i)->
                              let stk1 = push (StkTerminal (Terminal terminal 0 0 (toToken terminal))) stk in
                              let stk2 = push (StkState snext) stk1 in do
-                             debug $ "shift: " ++ show state ++ " " ++ terminal ++ " " ++ show snext
-                             debug ("Stack " ++ prStack stk2)
-                             compCandidates isSimple (symbols++[TerminalSymbol terminal]) snext actTbl gotoTbl prodRules pFunList stk2) cand2 
-                    return $ concat listOfList
+                             debug $ prlevel level ++ "shift[" ++ show i ++ "/" ++ show len ++ "]: " ++ show state ++ " " ++ terminal ++ " " ++ show snext
+                             debug $ prlevel level ++ ("Stack " ++ prStack stk2)
+                             compCandidates isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext actTbl gotoTbl prodRules pFunList stk2)
+                              (zip cand2 [1..])
+                        return $ concat listOfList
        nontermStateList -> do
+         let len = length nontermStateList
+ 
          listOfList <-
-           mapM (\(nonterminal,snext) ->
-              let stk1 = push (StkState snext) stk in   --- This is just for matching with the arity of rhs of production rules to reduce later!!
-              let stk2 = push (StkState snext) stk1 in 
-              compCandidates isSimple (symbols++[NonterminalSymbol nonterminal]) snext actTbl gotoTbl prodRules pFunList stk2) nontermStateList
+           mapM (\((nonterminal,snext),i) -> do
+              let stk1 = push (StkState snext) stk    --- This is just for matching with the arity of rhs of production rules to reduce later!!
+              let stk2 = push (StkState snext) stk1
+      
+              debug $ prlevel level ++ "goto[" ++ show i ++ "/" ++ show len ++ "]: " ++ show nonterminal ++ " " ++ show snext
+      
+              compCandidates isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext actTbl gotoTbl prodRules pFunList stk2)
+                (zip nontermStateList [1..])
          return $ concat listOfList
 
    prnumList -> do
-     debug $ "CANDIDATE: " ++ show [symbols] ++ "\n"
+     let len = length prnumList
+     
+     debug $ prlevel level ++ "CANDIDATE: " ++ show [symbols] ++ "\n"
+     debug $ prlevel level ++ "# of prNumList to reduce: " ++ show len
+     
      let aCandidate = if null symbols then [] else [symbols]
      if isSimple
      then return aCandidate
      else do listOfList <-
-                 mapM (\prnum -> do
-                     debug $ "reduce: " ++ show state ++ " " ++ "lookahead" ++ " prod #" ++ show prnum
-                     debug $ show (prodRules !! prnum)
-                     debug ("Stack " ++ prStack stk)
-                     compCandidatesForReduce isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum) prnumList
+                 mapM (\(prnum,i) -> do
+                     debug $ prlevel level ++ "reduce[" ++ show i ++ "/" ++ show len ++ "]: "
+                              ++ show state ++ " " ++ "lookahead" ++ " prod #" ++ show prnum
+                     debug $ prlevel level ++ show (prodRules !! prnum)
+                     debug $ prlevel level ++ ("Stack " ++ prStack stk)
+                     compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum)
+                      (zip prnumList [1..])
              return $ aCandidate ++ concat listOfList
          
-compCandidatesForReduce isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum = do
+compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum = do
   let prodrule = prodRules !! prnum
   let builderFun = pFunList !! prnum
   let lhs = fst prodrule
@@ -422,5 +438,5 @@ compCandidatesForReduce isSimple  symbols state actTbl gotoTbl prodRules pFunLis
   -- let stk2 = push (StkNonterminal ast lhs) stk1
   let stk2 = push (StkState toState) stk1  -- This is just for matching with the arity of rhs production rules to reduce later!!
   let stk3 = push (StkState toState) stk2
-  debug $ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
-  compCandidates isSimple symbols toState actTbl gotoTbl prodRules pFunList stk3
+  debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
+  compCandidates isSimple (level+1) symbols toState actTbl gotoTbl prodRules pFunList stk3
