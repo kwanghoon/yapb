@@ -422,21 +422,29 @@ compCandidates isSimple level symbols state actTbl gotoTbl prodRules pFunList st
                       (zip prnumList [1..])
              return $ aCandidate ++ concat listOfList
          
-compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum = do
+compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules pFunList stk prnum = 
   let prodrule = prodRules !! prnum
-  let builderFun = pFunList !! prnum
-  let lhs = fst prodrule
-  let rhsLength = length (snd prodrule)
-  let rhsAst = revTakeRhs rhsLength stk
-  -- let ast = builderFun rhsAst
-  let stk1 = drop (rhsLength*2) stk
-  let topState = currentState stk1
-  let toState =
-       case lookupGotoTable gotoTbl topState lhs of
-         Just state -> state
-         Nothing -> error $ "[compCandidatesForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
-  -- let stk2 = push (StkNonterminal ast lhs) stk1
-  let stk2 = push (StkState toState) stk1  -- This is just for matching with the arity of rhs production rules to reduce later!!
-  let stk3 = push (StkState toState) stk2
-  debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
-  compCandidates isSimple (level+1) symbols toState actTbl gotoTbl prodRules pFunList stk3
+      builderFun = pFunList !! prnum
+      lhs = fst prodrule
+      rhs = snd prodrule
+  in
+  if null rhs || lhs /= head rhs
+  then do
+    let rhsLength = length rhs
+    let rhsAst = revTakeRhs rhsLength stk
+    -- let ast = builderFun rhsAst
+    let stk1 = drop (rhsLength*2) stk
+    let topState = currentState stk1
+    let toState =
+         case lookupGotoTable gotoTbl topState lhs of
+           Just state -> state
+           Nothing -> error $ "[compCandidatesForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
+    -- let stk2 = push (StkNonterminal ast lhs) stk1
+    let stk2 = push (StkState toState) stk1  -- This is just for matching with the arity of rhs production rules to reduce later!!
+    let stk3 = push (StkState toState) stk2
+    debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
+    compCandidates isSimple (level+1) symbols toState actTbl gotoTbl prodRules pFunList stk3
+  else
+    return []
+
+    
