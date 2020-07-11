@@ -9,10 +9,10 @@
 - yapb: a library for a programmable parser builder system
 - yapb-exe: a wrapper interface to YAPB
 - conv-exe: a grammar format utility for conversion of a readable grammar (.lgrm) format into the Haskell data format (.grm)
-- syncomp-exe: a syntax completion server for Emacs
 - Examples: 
   - parser-exe: an arithmetic parser
   - polyrpc-exe: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and a poly cs interpter.
+  - syncomp-exe: a syntax completion server for Emacs
 
 ### Download and build
 ~~~
