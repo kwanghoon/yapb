@@ -89,7 +89,9 @@ executables:
 # ----------------------------------------
   syncomp-exe:
     main:                Main.hs
-    source-dirs:         app/syntaxcompletion
+    source-dirs:
+    - app/syntaxcompletion
+    - app/syntaxcompletion/ast
     ghc-options:
     - -threaded
     - -rtsopts

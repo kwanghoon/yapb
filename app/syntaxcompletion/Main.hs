@@ -1,6 +1,6 @@
 module Main where
 
-import CommonParserUtil
+import CommonParserUtil 
 
 import Lexer
 import Terminal
@@ -9,6 +9,7 @@ import System.IO
 
 -- for syntax completion
 import Token
+import Expr
 import EmacsServer
 import SynCompInterface
 import Control.Exception
@@ -22,32 +23,7 @@ computeCand programTextUptoCursor isSimpleMode = ((do
   terminalList <- lexing lexerSpec programTextUptoCursor 
   ast <- parsing parserSpec terminalList 
   successfullyParsed)
-  `catch` \e -> case e :: LexError of _ -> handleLexError
-  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e)
-
-
--- The normal parser
-doProcess text = do
-  putStrLn "Lexing..."
-  terminalList <- lexing lexerSpec text
-  mapM_ (putStrLn . terminalToString) terminalList
-  putStrLn "Parsing..."
-  exprSeqAst <- parsing parserSpec terminalList
-  putStrLn "Pretty Printing..."
-  putStrLn (show exprSeqAst)
-  
-  
-readline msg = do
-  putStr msg
-  hFlush stdout
-  readline'
-
-readline' = do
-  ch <- getChar
-  if ch == '\n' then
-    return ""
-  else
-    do line <- readline'
-       return (ch:line)
+  `catch` \e -> case e :: LexError of _ -> handleLexError)
+  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e
 
 

@@ -2,9 +2,9 @@ module Parser where
 
 import CommonParserUtil
 import Token
+import Expr
 
-data AST = AST  -- We do not build any ASTs!!
-     deriving (Show)
+noAction = \rhs -> ()
 
 parserSpec :: ParserSpec Token AST
 parserSpec = ParserSpec
@@ -13,25 +13,25 @@ parserSpec = ParserSpec
     
     parserSpecList =
     [
-      ("Start' -> Start", \rhs -> get rhs 1),
+      ("Start' -> Start", noAction),
 
-      ("Start -> Exp", \rhs -> get rhs 1),
+      ("Start -> Exp", noAction),
 
-      ("Exp -> AppExp", \rhs -> get rhs 1),
+      ("Exp -> AppExp", noAction),
 
-      ("Exp -> fn identifier => Exp", \rhs -> AST),
+      ("Exp -> fn identifier => Exp", noAction),
 
-      ("AppExp -> AtExp", \rhs -> get rhs 1),
+      ("AppExp -> AtExp", noAction),
 
-      ("AppExp -> AppExp AtExp", \rhs -> AST),
+      ("AppExp -> AppExp AtExp", noAction),
 
-      ("AtExp -> identifier", \rhs -> AST),
+      ("AtExp -> identifier", noAction),
 
-      ("AtExp -> ( Exp )", \rhs -> AST),
+      ("AtExp -> ( Exp )", noAction),
 
-      ("AtExp -> let Dec in Exp end", \rhs -> AST),
+      ("AtExp -> let Dec in Exp end", noAction),
 
-      ("Dec -> val identifier = Exp", \rhs -> AST)
+      ("Dec -> val identifier = Exp", noAction)
     ],
     
     baseDir = "./",

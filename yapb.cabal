@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 88800e2855714dc1e0bc1b93511d17d2dcb0011fe00e6dc01c3609335e0d9aa1
+-- hash: f28a1347c7ddd84cdcba33d0d1afcd5bbea2d63c57749607f36a45874e4aeb3f
 
 name:           yapb
 version:        0.1.1
@@ -97,9 +97,11 @@ executable syncomp-exe
       Lexer
       Parser
       Token
+      Expr
       Paths_yapb
   hs-source-dirs:
       app/syntaxcompletion
+      app/syntaxcompletion/ast
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
