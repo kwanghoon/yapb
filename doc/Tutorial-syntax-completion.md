@@ -1,132 +1,125 @@
+## Syntax completion server for Emacs using YAPB
+Three steps
+- Step 1: Prepare your parser
+- Step 2: Add a syntax completion server function to the parser
+- Step 3: Run Emacs as your text editor to write a program text, to configure Emacs, and to type TAB for syntax completion
 
+Two reference projects
+ - [arith](https://github.com/kwanghoon/arith)
+ - [smllike](https://github.com/kwanghoon/smllike)
 
-### How to write and run a syntax completion server for Emacs using YAPB
+In the following, we choose *arith* as an example of using YAPB for developing a syntax completion server for a very simple arithmetic expression language.
+
+### Initialize a Haskell project using [Stack](https://docs.haskellstack.org/en/stable/README/)
 ~~~
-  $ ls app/parser/*.hs
-  app/parser/Lexer.hs  app/parser/Main.hs  app/parser/Parser.hs  app/parser/Token.hs
-
-  $ cat app/parser/Lexer.hs
-  module Lexer(lexerSpec) where
-
-  import Prelude hiding (EQ)
-  import CommonParserUtil
-  import Token
-
-  mkFn :: Token -> (String -> Maybe Token)
-  mkFn tok = \text -> Just tok
-
-  skip :: String -> Maybe Token
-  skip = \text -> Nothing
-
-  lexerSpec :: LexerSpec Token
-  lexerSpec = LexerSpec
-    {
-      endOfToken    = END_OF_TOKEN,
-      lexerSpecList = 
-        [ ("[ \t\n]", skip),
-          ("[0-9]+" , mkFn INTEGER_NUMBER),
-          ("\\("    , mkFn OPEN_PAREN),
-          ("\\)"    , mkFn CLOSE_PAREN),
-          ("\\+"    , mkFn ADD),
-          ("\\-"    , mkFn SUB),
-          ("\\*"    , mkFn MUL),
-          ("\\/"    , mkFn DIV),
-          ("\\="    , mkFn EQ),
-          ("\\;"    , mkFn SEMICOLON),
-          ("[a-zA-Z][a-zA-Z0-9]*"    , mkFn IDENTIFIER)
-        ]
-    } 
-
-
-  $ cat app/parser/Parser.hs
-  module Parser where
-
-  import CommonParserUtil
-  import Token
-  import Expr
-
-
-  parserSpec :: ParserSpec Token AST
-  parserSpec = ParserSpec
-    {
-      startSymbol = "SeqExpr'",
-    
-      parserSpecList =
-      [
-        ("SeqExpr' -> SeqExpr", \rhs -> get rhs 1),
-      
-        ("SeqExpr -> SeqExpr ; AssignExpr",
-          \rhs -> toAstSeq (
-            fromAstSeq (get rhs 1) ++ [fromAstExpr (get rhs 3)]) ),
-      
-        ("SeqExpr -> AssignExpr", \rhs -> toAstSeq [fromAstExpr (get rhs 1)]),
-      
-        ("AssignExpr -> identifier = AssignExpr",
-          \rhs -> toAstExpr (Assign (getText rhs 1) (fromAstExpr (get rhs 3))) ),
-      
-        ("AssignExpr -> AdditiveExpr", \rhs -> get rhs 1),
-
-        ("AdditiveExpr -> AdditiveExpr + MultiplicativeExpr",
-          \rhs -> toAstExpr (
-            BinOp Expr.ADD (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
-
-        ("AdditiveExpr -> AdditiveExpr - MultiplicativeExpr",
-          \rhs -> toAstExpr (
-            BinOp Expr.SUB (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
-
-        ("AdditiveExpr -> MultiplicativeExpr", \rhs -> get rhs 1),
-
-        ("MultiplicativeExpr -> MultiplicativeExpr * PrimaryExpr",
-          \rhs -> toAstExpr (
-            BinOp Expr.MUL (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
-
-        ("MultiplicativeExpr -> MultiplicativeExpr / PrimaryExpr",
-          \rhs -> toAstExpr (
-            BinOp Expr.DIV (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
-
-        ("MultiplicativeExpr -> PrimaryExpr", \rhs -> get rhs 1),
-      
-        ("PrimaryExpr -> identifier", \rhs -> toAstExpr (Var (getText rhs 1)) ),
-
-        ("PrimaryExpr -> integer_number",
-          \rhs -> toAstExpr (Lit (read (getText rhs 1))) ),
-
-        ("PrimaryExpr -> ( AssignExpr )", \rhs -> get rhs 2)
-      ],
-    
-      baseDir = "./",
-      actionTblFile = "action_table.txt",  
-      gotoTblFile = "goto_table.txt",
-      grammarFile = "prod_rules.txt",
-      parserSpecFile = "mygrammar.grm",
-      genparserexe = "yapb-exe"
-    }
-
-  $ cat app/parser/example/oneline.arith
-  1 + 2 - 3 * 4 / 5
-  
-  $ cat app/parser/example/multiline.arith
-  x = 123;
-  x = x + 1;
-  y = x; 
-  y = y - 1 * 2 / 3;
-  z = y = x
-
-  $ stack exec parser-exe
-  Enter your file: app/parser/example/oneline.arith
-  Lexing...
-  Parsing...
-  done.
-  Pretty Printing...
-  ((1 + 2) - ((3 * 4) / 5))
-  
-  $ stack exec parser-exe
-  Enter your file: app/parser/example/multiline.arith
-  Lexing...
-  Parsing...
-  done.
-  Pretty Printing...
-  (x = 123); (x = (x + 1)); (y = x); (y = (y - ((1 * 2) / 3))); (z = (y = x))
+$ stack new arith
+$ cd arith
 ~~~
 
+### Prepare your parser and a driver
+
+A list of files for a parser together with a main module 
+- for parser:
+   * [app/Token.hs](https://github.com/kwanghoon/arith/blob/master/app/Token.hs)
+   * [app/Lexer.hs](https://github.com/kwanghoon/arith/blob/master/app/Lexer.hs)
+   * [app/ast/Expr.hs](https://github.com/kwanghoon/arith/blob/master/app/ast/Expr.hs)
+   * [app/Parser.hs](https://github.com/kwanghoon/arith/blob/master/app/Parser.hs)
+- for a driver for a syntax completion server
+   * app/Main.hs 
+
+~~~
+$ ls app/*.hs app/ast/Expr.hs
+app/Lexer.hs  app/Main.hs  app/Parser.hs  app/Token.hs  app/ast/Expr.hs
+~~~
+
+For a parser, you may refer to another tutorial on how to write a parser using YAPB. The exatcly same source code for the parser is used for computing syntax completion candidates. 
+- Token.hs, ast/Expr.hs, Lexer.hs, and Parser.hs
+
+For a driver, you may use the following code as it is. 
+ - Main.hs
+    * *main* calls *emacsServer* with *computeCand* as an argument.
+    * *computeCand* takes a program text and a mode of simple and nested candidates.
+    * *computeCand* use the (lexer and) parser to parse the program text up to the cursor position. 
+        . In case of no exception, the program text is successfully parsed.
+        . In case of *LexError*, there is an unacceptable lexical symbol. The exception is handled by *handleLexError*.
+        . In case of *ParseError*, the driver calls *handleParseError* to start computing candidates in the mode specified by *isSimpleMode*. The exception *e* contains all  LALR(1) automaton state information (automaton stack, action table, goto table, production rules) at the time that the parsing stopped. 
+~~~
+module Main where
+
+import CommonParserUtil
+import Token
+import Expr
+import Lexer
+import Parser
+import EmacsServer
+import SynCompInterface
+import Control.Exception
+import System.IO
+
+main :: IO ()
+main = do
+ emacsServer computeCand
+
+computeCand :: String -> Bool -> IO [EmacsDataItem]
+computeCand programTextUptoCursor isSimpleMode = ((do
+ terminalList <- lexing lexerSpec programTextUptoCursor
+ ast <- parsing parserSpec terminalList
+ successfullyParsed)
+ `catch` \e -> case e :: LexError of _ -> handleLexError
+ `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e)
+~~~
+
+### Configure the Haskell project to use YAPB
+To use the function of automatic computation of syntax completion candidates, the project must use YAPB 0.1.1. 
+
+[*package.yaml* of *arith*]  
+~~~
+executables:
+  arith-exe:
+    main:                Main.hs
+    source-dirs:
+    - app/ast
+    - app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - arith
+    - yapb >= 0.1.1    <====== Add a dependency on yapb-0.1.1!
+
+~~~
+
+Note that YAPB-0.1.0 is available at Hackage, but YAPB-0.1.1 is not. So, you have to git-clone the yapb repository together, and *stack.yaml* of *arith* needs a change as follows.
+[*stack.yaml* in *arith*]
+~~~
+packages:
+- .
+- ../../yapb    <====== To refer to yapb-0.1.1 
+~~~
+ - This inconvenience will disappear after yapb-0.1.1 is registered at Hackage. 
+
+
+### Build arith and run a server
+To use the function of automatic computation of syntax completion candidates, the project must use YAPB 0.1.1. 
+
+~~~
+$ stack clean
+$ stack build
+$ stack exec arith-exe     <====== To start a server
+~~~
+
+You launch an Emacs window to open a program file, say, *app/example/test1.arith*. 
+- Give an Emacs command, *M-x load-file*, to enter *load.el* in the same directory as the program file,
+- Choose a mode either by *M-x syntaxcomplete-mode* and *M-x syntaxcomplete-mode-nested* for computing simple candidates and nested candidates.   
+
+Now you are assumed to edit the program text.  
+~~~
+$ cat app/example/test1.arith 
+(2 + 3
+~~~
+- Move the cursor  to the end of the program text, *( 2 + 3*, and
+- Press TAB to display candidates for syntax completion.
+
+You must see a list of candidates in Emacs window as long as no problem happens. 
 

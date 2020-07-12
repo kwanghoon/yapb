@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9a526bc5347d2b0f46b7a03c8c8521b8f096c68eccb695ff7fe377a92028b1f4
+-- hash: 88800e2855714dc1e0bc1b93511d17d2dcb0011fe00e6dc01c3609335e0d9aa1
 
 name:           yapb
 version:        0.1.1
@@ -87,43 +87,6 @@ executable parser-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , regex-tdfa
-    , yapb
-  default-language: Haskell2010
-
-executable polyrpc-exe
-  main-is: Main.hs
-  other-modules:
-      Compile
-      Execute
-      Lexer
-      Parser
-      Token
-      TypeCheck
-      Verify
-      BasicLib
-      Expr
-      Literal
-      Location
-      Prim
-      Type
-      CSExpr
-      CSType
-      Paths_yapb
-  hs-source-dirs:
-      app/polyrpc
-      app/polyrpc/ast
-      app/polyrpc/cs
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      aeson >=1.4.7 && <1.5
-    , aeson-pretty >=0.8.8 && <0.9
-    , base >=4.7 && <5
-    , bytestring
-    , containers >=0.6.0 && <0.7
-    , json >=0.10 && <0.11
-    , pretty >=1.1.3 && <1.2
-    , prettyprinter >=1.6.1 && <1.7
     , regex-tdfa
     , yapb
   default-language: Haskell2010

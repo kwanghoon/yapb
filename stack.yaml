@@ -35,13 +35,13 @@ packages:
 # forks / in-progress versions pinned to a git hash. For example:
 #
 extra-deps:
-  - json-0.10
+#  - json-0.10
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
-extra-deps:
-  - json-0.10
+#extra-deps:
+#  - json-0.10
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
