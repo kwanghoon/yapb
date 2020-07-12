@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a6c1a6bc876ed5b434fb5a9b43e1eb956db99ba313a2e0ac5e1826a878739135
+-- hash: 9a526bc5347d2b0f46b7a03c8c8521b8f096c68eccb695ff7fe377a92028b1f4
 
 name:           yapb
 version:        0.1.1
@@ -42,16 +42,21 @@ library
       AutomatonType
       LoadAutomaton
       ReadGrammar
+      EmacsServer
+      SynCompInterface
   other-modules:
       Paths_yapb
   hs-source-dirs:
       src/gentable/
       src/parserlib/
+      src/syncomplib
       src/util/
   build-depends:
       base >=4.7 && <5
+    , bytestring >=0.10.8 && <0.11
     , directory >=1.3.3 && <1.4
     , hashable >=1.3.0 && <1.4
+    , network >=3.1.1 && <3.2
     , process >=1.6.5 && <1.7
     , regex-tdfa >=1.3.1 && <1.4
   default-language: Haskell2010
@@ -126,10 +131,8 @@ executable polyrpc-exe
 executable syncomp-exe
   main-is: Main.hs
   other-modules:
-      EmacsServer
       Lexer
       Parser
-      SynCompInterface
       Token
       Paths_yapb
   hs-source-dirs:
@@ -137,8 +140,6 @@ executable syncomp-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , bytestring >=0.10.8 && <0.11
-    , network >=3.1.1 && <3.2
     , regex-tdfa
     , yapb
   default-language: Haskell2010
