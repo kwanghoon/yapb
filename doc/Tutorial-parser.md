@@ -319,19 +319,24 @@ How to write those files are explained in the followin.
          return (ch:line)
 ~~~
 
-[How to run the arith parser]
+Now you are ready to run the arith parser. For testing, assume you write two examples, *oneline.arith* and *multiline.arith*.
+
+[app/example/oneline.arith]
+~~~
+  1 + 2 - 3 * 4 / 5
 ~~~
 
-  $ cat app/example/oneline.arith
-  1 + 2 - 3 * 4 / 5
-  
-  $ cat app/example/multiline.arith
+[app/example/multiline.arith]
+~~~
   x = 123;
   x = x + 1;
   y = x; 
   y = y - 1 * 2 / 3;
   z = y = x
+~~~
 
+Run the arith parser by stack. 
+~~~
   $ stack exec parser-exe
   Enter your file: app/example/oneline.arith
   Lexing...
