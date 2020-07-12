@@ -1,22 +1,84 @@
 
 ### How to write and run a parser using YAPB
 ~~~
-  $ ls app/parser/*.hs
-  app/parser/Lexer.hs  app/parser/Main.hs  app/parser/Parser.hs  app/parser/Token.hs
+  $ ls app/parser/*.hs app/ast/*.hs
+  app/parser/Lexer.hs  app/parser/Main.hs  app/parser/Parser.hs  app/parser/Token.hs app/ast/Expr.hs
+~~~
 
-  $ cat app/parser/Lexer.hs
+[app/parser/Token.hs]
+~~~
+  module Token(Token(..)) where
+
+  import Prelude hiding(EQ)
+  import TokenInterface
+
+  -----------------------------------------------
+  -- What you need to write for your own parser!!
+  -----------------------------------------------
+  data Token =
+      END_OF_TOKEN
+    | OPEN_PAREN  | CLOSE_PAREN
+    | IDENTIFIER  | INTEGER_NUMBER
+    | ADD  | SUB  | MUL  | DIV
+    | EQ  | SEMICOLON
+    deriving (Eq, Show)
+
+  tokenStrList :: [(Token,String)]
+  tokenStrList =
+    [ (END_OF_TOKEN, "$"),
+      (OPEN_PAREN, "("), (CLOSE_PAREN, ")"),
+      (IDENTIFIER, "identifier"), (INTEGER_NUMBER, "integer_number"),
+      (ADD, "+"), (SUB, "-"), (MUL, "*"), (DIV, "/"),
+      (EQ, "="), (SEMICOLON, ";")  
+    ]
+
+  -------------------------------------
+  -- Just copy the following as it is!!
+  -------------------------------------
+  findTok tok [] = Nothing
+  findTok tok ((tok_,str):list)
+    | tok == tok_ = Just str
+    | otherwise   = findTok tok list
+
+  findStr str [] = Nothing
+  findStr str ((tok,str_):list)
+    | str == str_ = Just tok
+    | otherwise   = findStr str list
+  
+  instance TokenInterface Token where
+    toToken str   =
+      case findStr str tokenStrList of
+        Nothing  -> error ("toToken: " ++ str)
+        Just tok -> tok
+    fromToken tok =
+      case findTok tok tokenStrList of
+        Nothing  -> error ("fromToken: " ++ show tok)
+        Just str -> str
+
+~~~
+
+[app/parser/Lexer.hs]
+~~~
   module Lexer(lexerSpec) where
 
   import Prelude hiding (EQ)
   import CommonParserUtil
   import Token
 
+  ----------------------------
+  -- Utility functions
+  ----------------------------
+  
   mkFn :: Token -> (String -> Maybe Token)
   mkFn tok = \text -> Just tok
 
   skip :: String -> Maybe Token
   skip = \text -> Nothing
 
+  ----------------------------
+  -- Your lexer specification
+  ----------------------------
+  
   lexerSpec :: LexerSpec Token
   lexerSpec = LexerSpec
     {
@@ -35,9 +97,69 @@
           ("[a-zA-Z][a-zA-Z0-9]*"    , mkFn IDENTIFIER)
         ]
     } 
+~~~
 
+[app/parser/ast/Expr.hs]
+~~~
+  module Expr where
 
-  $ cat app/parser/Parser.hs
+  -----------------------------------------------
+  -- What you need to write for your own parser!!
+  -----------------------------------------------
+
+  data AST =
+      ASTSeq  { fromAstSeq  :: [Expr] } -- Expr Sequence: Expr1; ... ; Exprn
+    | ASTExpr { fromAstExpr :: Expr   }
+
+  instance Show AST where
+    showsPrec p _ = (++) "AST ..."
+
+  toAstSeq :: [Expr] -> AST
+  toAstSeq exprs = ASTSeq exprs
+
+  toAstExpr :: Expr -> AST
+  toAstExpr expr = ASTExpr expr
+
+  data Expr =
+      Lit { fromLit :: Int }
+    | Var { fromVar :: String }
+    | BinOp { kindFromBinOp :: BinOpKind,
+              leftOpFromBinOp :: Expr,
+              rightOpFromBinOp :: Expr }
+    | Assign { lhsFromAssign :: String,
+               rhsFromAssign :: Expr  }
+
+  data BinOpKind = ADD | SUB | MUL | DIV
+
+  ---------------------------------------
+  -- Optional: for pretty printing an AST
+  ---------------------------------------
+  pprintAst :: AST -> String
+  pprintAst (ASTSeq exprs) =
+    let insSemicolon []         = ""
+        insSemicolon [str]      = str
+        insSemicolon (str:strs) = str ++ "; " ++ insSemicolon strs
+    in insSemicolon (map pprint exprs)
+    
+  pprintAst (ASTExpr expr) = pprint expr
+
+  pprint :: Expr -> String
+  pprint (Lit i) = show i
+  pprint (Var v) = v
+  pprint (BinOp Expr.ADD left right) =
+    "(" ++ pprint left ++ " + " ++ pprint right ++ ")"
+  pprint (BinOp Expr.SUB left right) =
+    "(" ++ pprint left ++ " - " ++ pprint right ++ ")"
+  pprint (BinOp Expr.MUL left right) =
+    "(" ++ pprint left ++ " * " ++ pprint right ++ ")"
+  pprint (BinOp Expr.DIV left right) =
+    "(" ++ pprint left ++ " / " ++ pprint right ++ ")"
+  pprint (Assign x expr) =   
+    "(" ++ x ++ " = " ++ pprint expr ++ ")"
+~~~
+
+[app/parser/Parser.hs]
+~~~
   module Parser where
 
   import CommonParserUtil
@@ -45,6 +167,10 @@
   import Expr
 
 
+  ----------------------------
+  -- Your parser specification
+  ----------------------------
+  
   parserSpec :: ParserSpec Token AST
   parserSpec = ParserSpec
     {
@@ -100,6 +226,54 @@
       parserSpecFile = "mygrammar.grm",
       genparserexe = "yapb-exe"
     }
+~~~
+
+[app/parser/Main.hs]
+~~~
+  module Main where
+
+  import CommonParserUtil
+
+  import Lexer
+  import Terminal
+  import Parser
+  import Expr
+
+  import System.IO
+
+  main :: IO ()
+  main = do
+    fileName <- readline "Enter your file: "
+    case fileName of
+      "exit" -> return ()
+      line -> doProcess line
+
+  doProcess line = do
+    text <- readFile line 
+    putStrLn "Lexing..."
+    terminalList <- lexing lexerSpec text
+    putStrLn "Parsing..."
+    exprSeqAst <- parsing parserSpec terminalList
+    putStrLn "Pretty Printing..."
+    putStrLn (pprintAst exprSeqAst)
+  
+  
+  readline msg = do
+    putStr msg
+    hFlush stdout
+    readline'
+
+  readline' = do
+    ch <- getChar
+    if ch == '\n' then
+      return ""
+    else
+      do line <- readline'
+         return (ch:line)
+~~~
+
+[How to run the arith parser]
+~~~
 
   $ cat app/parser/example/oneline.arith
   1 + 2 - 3 * 4 / 5
