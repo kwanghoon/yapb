@@ -37,12 +37,6 @@ For a parser, you may refer to another tutorial on how to write a parser using Y
 
 For a driver, you may use the following code as it is. 
  - Main.hs
-    * *main* calls *emacsServer* with *computeCand* as an argument.
-    * *computeCand* takes a program text and a mode of simple and nested candidates.
-    * *computeCand* use the (lexer and) parser to parse the program text up to the cursor position. 
-        . In case of no exception, the program text is successfully parsed.
-        . In case of *LexError*, there is an unacceptable lexical symbol. The exception is handled by *handleLexError*.
-        . In case of *ParseError*, the driver calls *handleParseError* to start computing candidates in the mode specified by *isSimpleMode*. The exception *e* contains all  LALR(1) automaton state information (automaton stack, action table, goto table, production rules) at the time that the parsing stopped. 
 ~~~
 module Main where
 
