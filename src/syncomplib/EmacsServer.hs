@@ -8,15 +8,15 @@ import Data.ByteString.Char8
 import Control.Monad
 import Control.Exception
 
-type ComputeCandidate = String -> Bool -> Int -> IO [EmacsDataItem]
+type ComputeCandidate = String -> Bool -> {- Int -> -} IO [EmacsDataItem]
 
 emacsServer :: ComputeCandidate -> IO ()
-emacsServer f = do
+emacsServer computeCand = do
     sock <- socket AF_INET Stream defaultProtocol
     setSocketOption sock ReuseAddr 1
     bind sock (SockAddrInet 50000 0)
     listen sock 5
-    acceptLoop f sock `finally` close sock
+    acceptLoop computeCand sock `finally` close sock
 
 acceptLoop :: ComputeCandidate -> Socket -> IO ()
 acceptLoop computeCand sock = forever $ do
@@ -26,7 +26,7 @@ acceptLoop computeCand sock = forever $ do
     (conn, _) <- accept sock
     str <- getSource conn
     print str
-    candidateList <- computeCand str isSimple cursorPos
+    candidateList <- computeCand str isSimple {- cursorPos -} -- What is cursorPos useful for?
     print (Prelude.map show candidateList)
     (conn, _) <- accept sock
     sendCandidateList conn candidateList

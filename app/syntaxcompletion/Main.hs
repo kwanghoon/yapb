@@ -17,13 +17,13 @@ main :: IO ()
 main = do
   emacsServer computeCand
   
-computeCand :: String -> Bool -> Int -> IO [EmacsDataItem]
-computeCand str isSimple cursorPos = ((do
-  terminalList <- lexing lexerSpec str 
+computeCand :: String -> Bool -> IO [EmacsDataItem]
+computeCand programTextUptoCursor isSimpleMode = ((do
+  terminalList <- lexing lexerSpec programTextUptoCursor 
   ast <- parsing parserSpec terminalList 
   successfullyParsed)
   `catch` \e -> case e :: LexError of _ -> handleLexError
-  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimple e)
+  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e)
 
 
 -- The normal parser
