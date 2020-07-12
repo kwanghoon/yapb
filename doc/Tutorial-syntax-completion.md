@@ -87,7 +87,7 @@ executables:
   arith-exe:
     main:                Main.hs
     source-dirs:
-    - app/ast
+    - app/ast         <====== To include ast/Expr.hs
     - app
     ghc-options:
     - -threaded
@@ -104,7 +104,7 @@ Note that YAPB-0.1.0 is available at Hackage, but YAPB-0.1.1 is not. So, you hav
 ~~~
 packages:
 - .
-- ../../yapb    <====== To refer to yapb-0.1.1 
+- ../yapb    <====== To refer to yapb-0.1.1 assuming the directory of yapb is in the same level. Otherwise, you may adjust the path.
 ~~~
  - This inconvenience will disappear after yapb-0.1.1 is registered at Hackage. 
 
