@@ -1,11 +1,58 @@
 
-### How to write and run a parser using YAPB
+## Writing your parser using YAPB
+
+### How to configure a haskell Stack project using YAPB
+
+In the beginning, you initialize a haskell Stack project.
+
 ~~~
-  $ ls app/parser/*.hs app/ast/*.hs
-  app/parser/Lexer.hs  app/parser/Main.hs  app/parser/Parser.hs  app/parser/Token.hs app/ast/Expr.hs
+  $ stack new parser
+  $ cd parser
 ~~~
 
-[app/parser/Token.hs]
+To use the function of automatic computation of syntax completion candidates, the project must use YAPB 0.1.1. 
+
+[*package.yaml* of *arith*]  
+~~~
+executables:
+  arith-exe:
+    main:                Main.hs
+    source-dirs:
+    - app/ast         <====== To include ast/Expr.hs
+    - app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - arith
+    - yapb >= 0.1.1    <====== Add a dependency on yapb-0.1.1!
+
+~~~
+
+Note that YAPB-0.1.0 is available at Hackage, but YAPB-0.1.1 is not. So, you have to git-clone the yapb repository together, and *stack.yaml* of *arith* needs a change as follows.
+[*stack.yaml* in *arith*]
+~~~
+packages:
+- .
+- ../yapb    <====== To refer to yapb-0.1.1 assuming the directory of yapb is in the same level. Otherwise, you may adjust the path.
+~~~
+ - This inconvenience will disappear after yapb-0.1.1 is registered at Hackage. 
+
+
+### How to write and run a parser using YAPB
+
+For your own parser, you have to write *Token.hs*, *Lexer.hs*, *ast/Expr.hs*, *Parser.hs*, and *Main.hs*.
+
+~~~
+  $ ls app/*.hs app/ast/*.hs
+  app/Lexer.hs  app/Main.hs  app/Parser.hs  app/Token.hs app/ast/Expr.hs
+~~~
+
+How to write those files are explained in the followin. 
+
+
+[app/Token.hs]
 ~~~
   module Token(Token(..)) where
 
@@ -57,7 +104,7 @@
 
 ~~~
 
-[app/parser/Lexer.hs]
+[app/Lexer.hs]
 ~~~
   module Lexer(lexerSpec) where
 
@@ -99,7 +146,7 @@
     } 
 ~~~
 
-[app/parser/ast/Expr.hs]
+[app/ast/Expr.hs]
 ~~~
   module Expr where
 
@@ -158,7 +205,7 @@
     "(" ++ x ++ " = " ++ pprint expr ++ ")"
 ~~~
 
-[app/parser/Parser.hs]
+[app/Parser.hs]
 ~~~
   module Parser where
 
@@ -228,7 +275,7 @@
     }
 ~~~
 
-[app/parser/Main.hs]
+[app/Main.hs]
 ~~~
   module Main where
 
@@ -275,10 +322,10 @@
 [How to run the arith parser]
 ~~~
 
-  $ cat app/parser/example/oneline.arith
+  $ cat app/example/oneline.arith
   1 + 2 - 3 * 4 / 5
   
-  $ cat app/parser/example/multiline.arith
+  $ cat app/example/multiline.arith
   x = 123;
   x = x + 1;
   y = x; 
@@ -286,7 +333,7 @@
   z = y = x
 
   $ stack exec parser-exe
-  Enter your file: app/parser/example/oneline.arith
+  Enter your file: app/example/oneline.arith
   Lexing...
   Parsing...
   done.
@@ -294,7 +341,7 @@
   ((1 + 2) - ((3 * 4) / 5))
   
   $ stack exec parser-exe
-  Enter your file: app/parser/example/multiline.arith
+  Enter your file: app/example/multiline.arith
   Lexing...
   Parsing...
   done.
