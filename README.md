@@ -27,5 +27,5 @@
 - [A top-down approach to writing a compiler for arithmetic expressions](https://github.com/kwanghoon/swlab_parser_builder/blob/master/doc/tutorial_swlab_parser_builder.txt) Written in Korean.
 
 ### Reference
-- [References](https://github.com/kwanghoon/swlab_parser_builder/blob/master/doc/Reference.md)
+- [References](https://github.com/kwanghoon/yapb/blob/master/doc/Reference.md)
 
