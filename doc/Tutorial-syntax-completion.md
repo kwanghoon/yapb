@@ -68,14 +68,14 @@ computeCand programTextUptoCursor isSimpleMode = ((do
  // In case of *LexError*, there is an unacceptable lexical symbol. The exception is handled 
  // by handleLexError.
  
- `catch` \e -> case e :: LexError of _ -> handleLexError  
+ `catch` \e -> case e :: LexError of _ -> handleLexError)
  
  // In case of *ParseError*, the driver calls *handleParseError* to start computing candidates 
  // in the mode specified by *isSimpleMode*. The exception *e* contains all  LALR(1) automaton 
  // state information (automaton stack, action table, goto table, production rules) at the time 
  // that the parsing stopped. 
  
- `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e)
+ `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e
 ~~~
 
 ### Configure the Haskell project to use YAPB
