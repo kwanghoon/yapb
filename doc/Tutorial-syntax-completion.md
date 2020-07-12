@@ -58,14 +58,29 @@ import System.IO
 
 main :: IO ()
 main = do
- emacsServer computeCand
+ emacsServer computeCand      // *main* calls *emacsServer* with *computeCand* as an argument.
 
 computeCand :: String -> Bool -> IO [EmacsDataItem]
 computeCand programTextUptoCursor isSimpleMode = ((do
- terminalList <- lexing lexerSpec programTextUptoCursor
- ast <- parsing parserSpec terminalList
- successfullyParsed)
- `catch` \e -> case e :: LexError of _ -> handleLexError
+ // The lexer and the parser are working
+ 
+ terminalList <- lexing lexerSpec programTextUptoCursor   
+ ast <- parsing parserSpec terminalList                   
+ 
+ // In case of no exception, the program text is successfully parsed
+ 
+ successfullyParsed)                                      
+ 
+ // In case of *LexError*, there is an unacceptable lexical symbol. The exception is handled 
+ // by handleLexError.
+ 
+ `catch` \e -> case e :: LexError of _ -> handleLexError  
+ 
+ // In case of *ParseError*, the driver calls *handleParseError* to start computing candidates 
+ // in the mode specified by *isSimpleMode*. The exception *e* contains all  LALR(1) automaton 
+ // state information (automaton stack, action table, goto table, production rules) at the time 
+ // that the parsing stopped. 
+ 
  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimpleMode e)
 ~~~
 
