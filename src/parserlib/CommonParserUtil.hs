@@ -18,6 +18,8 @@ import LoadAutomaton
 
 import Data.List (nub)
 
+import SynCompInterface 
+
 -- Lexer Specification
 type RegExpStr    = String
 type LexFun token = String -> Maybe token 
@@ -60,7 +62,7 @@ data LexError = LexError Int Int String  -- Line, Col, Text
 
 instance Exception LexError
 
-prLexError (LexError line col text) = do
+prLexError (CommonParserUtil.LexError line col text) = do
   putStr $ "No matching lexer spec at "
   putStr $ "Line " ++ show line
   putStr $ "Column " ++ show col
@@ -93,7 +95,7 @@ matchLexSpec :: TokenInterface token =>
                 Line -> Column -> LexerSpecList token -> String
              -> IO (String, String, Maybe token)
 matchLexSpec line col [] text = do
-  throw (LexError line col text)
+  throw (CommonParserUtil.LexError line col text)
   -- putStr $ "No matching lexer spec at "
   -- putStr $ "Line " ++ show line
   -- putStr $ "Column " ++ show col
@@ -447,4 +449,48 @@ compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules p
   else
     return []
 
-    
+--
+successfullyParsed :: IO [EmacsDataItem]
+successfullyParsed = return [SynCompInterface.SuccessfullyParsed]
+
+handleLexError :: IO [EmacsDataItem]
+handleLexError = return [SynCompInterface.LexError]
+  
+handleParseError isSimple (NotFoundAction _ state stk actTbl gotoTbl prodRules pFunList terminalList) =
+  _handleParseError isSimple state stk actTbl gotoTbl prodRules pFunList terminalList
+handleParseError isSimple (NotFoundGoto state _ stk actTbl gotoTbl prodRules pFunList terminalList) =
+  _handleParseError isSimple state stk actTbl gotoTbl prodRules pFunList terminalList
+
+
+_handleParseError isSimple state stk actTbl gotoTbl prodRules pFunList terminalList = 
+   if length terminalList == 1 then do -- [$]
+     candidates <- compCandidates isSimple 0 [] state actTbl gotoTbl prodRules pFunList stk
+     let cands = candidates
+     let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
+     let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
+     mapM_ (putStrLn . show) rawStrs
+     return $ map Candidate strs
+   else
+     return [SynCompInterface.ParseError (map terminalToString terminalList)]
+
+showSymbol (TerminalSymbol s) = s
+showSymbol (NonterminalSymbol _) = "..."
+
+showRawSymbol (TerminalSymbol s) = s
+showRawSymbol (NonterminalSymbol s) = s
+
+concatStrList [] = "" -- error "The empty candidate?"
+concatStrList [str] = str
+concatStrList (str:strs) = str ++ " " ++ concatStrList strs
+
+-- Q. Can we make it be typed???
+--
+-- computeCandWith :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast)
+--     => LexerSpec token -> ParserSpec token ast
+--     -> String -> Bool -> Int -> IO [EmacsDataItem]
+-- computeCandWith lexerSpec parserSpec str isSimple cursorPos = ((do
+--   terminalList <- lexing lexerSpec str 
+--   ast <- parsing parserSpec terminalList 
+--   successfullyParsed)
+--   `catch` \e -> case e :: LexError of _ -> handleLexError
+--   `catch` \e -> case e :: ParseError token ast of _ -> handleParseError isSimple e)    

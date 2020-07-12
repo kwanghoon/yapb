@@ -2,64 +2,29 @@ module Main where
 
 import CommonParserUtil
 
-import Token
 import Lexer
 import Terminal
 import Parser
-import SynCompInterface
-import EmacsServer
 import System.IO
 
-import Data.Typeable
+-- for syntax completion
+import Token
+import EmacsServer
+import SynCompInterface
 import Control.Exception
-import Data.List (nub)
 
 main :: IO ()
 main = do
   emacsServer computeCand
   
-  -- text <- readline "Enter text to parse: "
-  -- doProcess text
-
--- Computing candidates for syntax completion
-
 computeCand :: String -> Bool -> Int -> IO [EmacsDataItem]
 computeCand str isSimple cursorPos = ((do
   terminalList <- lexing lexerSpec str 
   ast <- parsing parserSpec terminalList 
-  return [SuccessfullyParsed])
-  `catch` \e -> case e :: LexError of _ -> return [SynCompInterface.LexError])
-  `catch` \e -> case e :: ParseError Token AST of
-                  NotFoundAction _ state stk actTbl gotoTbl prodRules pFunList terminalList ->
-                    if length terminalList  == 1 then do -- [$]
-                      candidates <- compCandidates isSimple 0 [] state actTbl gotoTbl prodRules pFunList stk -- return ["candidates"]
-                      let cands = candidates
-                      let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
-                      let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
-                      mapM_ (putStrLn . show) rawStrs
-                      return $ map Candidate strs
-                    else
-                      return [SynCompInterface.ParseError (map terminalToString terminalList)]
-                  NotFoundGoto state _ stk actTbl gotoTbl prodRules pFunList terminalList ->
-                    if length terminalList == 1 then do -- [$]
-                      candidates <- compCandidates isSimple 0 [] state actTbl gotoTbl prodRules pFunList stk
-                      let cands = candidates
-                      let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
-                      let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
-                      mapM_ (putStrLn . show) rawStrs
-                      return $ map Candidate strs
-                    else
-                      return [SynCompInterface.ParseError (map terminalToString terminalList)]
-                      
-showSymbol (TerminalSymbol s) = s
-showSymbol (NonterminalSymbol _) = "..."
+  successfullyParsed)
+  `catch` \e -> case e :: LexError of _ -> handleLexError
+  `catch` \e -> case e :: ParseError Token AST of _ -> handleParseError isSimple e)
 
-showRawSymbol (TerminalSymbol s) = s
-showRawSymbol (NonterminalSymbol s) = s
-
-concatStrList [] = "" -- error "The empty candidate?"
-concatStrList [str] = str
-concatStrList (str:strs) = str ++ " " ++ concatStrList strs
 
 -- The normal parser
 doProcess text = do
