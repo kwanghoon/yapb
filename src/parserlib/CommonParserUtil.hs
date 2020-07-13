@@ -447,7 +447,8 @@ compCandidatesForReduce level isSimple  symbols state actTbl gotoTbl prodRules p
     let stk3 = push (StkState toState) stk2
     debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
     compCandidates isSimple (level+1) symbols toState actTbl gotoTbl prodRules pFunList stk3
-  else
+  else do
+    debug $ prlevel level ++ "DONE: [lhs == head rhs] " ++ lhs ++ " == " ++ head rhs
     return []
 
 --
