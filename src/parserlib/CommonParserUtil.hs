@@ -386,7 +386,7 @@ compCandidates isSimple level symbols state actTbl gotoTbl prodRules pFunList st
                          mapM (\((terminal,snext),i)->
                              let stk1 = push (StkTerminal (Terminal terminal 0 0 (toToken terminal))) stk in
                              let stk2 = push (StkState snext) stk1 in do
-                             debug $ prlevel level ++ "shift[" ++ show i ++ "/" ++ show len ++ "]: " ++ show state ++ " " ++ terminal ++ " " ++ show snext
+                             debug $ prlevel level ++ "shift[" ++ show i ++ "/" ++ show len ++ "]: " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
                              debug $ prlevel level ++ ("Stack " ++ prStack stk2)
                              compCandidates isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext actTbl gotoTbl prodRules pFunList stk2)
                               (zip cand2 [1..])
@@ -399,7 +399,7 @@ compCandidates isSimple level symbols state actTbl gotoTbl prodRules pFunList st
               let stk1 = push (StkState snext) stk    --- This is just for matching with the arity of rhs of production rules to reduce later!!
               let stk2 = push (StkState snext) stk1
       
-              debug $ prlevel level ++ "goto[" ++ show i ++ "/" ++ show len ++ "]: " ++ show nonterminal ++ " " ++ show snext
+              debug $ prlevel level ++ "goto[" ++ show i ++ "/" ++ show len ++ "] at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
       
               compCandidates isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext actTbl gotoTbl prodRules pFunList stk2)
                 (zip nontermStateList [1..])
@@ -408,8 +408,9 @@ compCandidates isSimple level symbols state actTbl gotoTbl prodRules pFunList st
    prnumList -> do
      let len = length prnumList
      
-     debug $ prlevel level ++ "CANDIDATE: " ++ show [symbols] ++ "\n"
+     debug $ prlevel level ++ "CANDIDATE: " ++ show [symbols]
      debug $ prlevel level ++ "# of prNumList to reduce: " ++ show len
+     debug $ prlevel level ++ show [ prodRules !! prnum | prnum <- prnumList ]
      
      let aCandidate = if null symbols then [] else [symbols]
      if isSimple
