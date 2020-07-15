@@ -387,76 +387,92 @@ compCandidates isSimple level symbols state automaton stk = do
   else return $ tail $ scanl (++) [] (filter (not . null) gammas)
 
 compGammas :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-  Bool -> Int -> [Candidate] -> Int -> Automaton token ast -> Stack token ast -> [(Int, Stack token ast)]-> IO [[Candidate]]
-  
+  Bool -> Int -> [Candidate] -> Int -> Automaton token ast -> Stack token ast -> [(Int, Stack token ast, String)]-> IO [[Candidate]]
+
+checkCycle flag level state stk action history cont =
+  if flag && (state,stk,action) `elem` history
+  then do debug $ prlevel level ++ "CYCLE is detected !!"
+          debug $ prlevel level ++ show state ++ " " ++ action
+          debug $ prlevel level ++ prStack stk
+          debug $ ""
+          return []
+  else cont ( (state,stk,action) : history )
+
 compGammas isSimple level symbols state automaton stk history = 
-  if (state,stk) `elem` history
-  then return []
-  else
-    let history1 = (state,stk) : history in
-    case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
-     [] ->
-       case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTbl automaton, state==fromState] of
-         [] ->
-           if length [True | ((s,lookahead),Accept) <- actTbl automaton, state==s] >= 1
-           then do 
-                  return []
-           else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl automaton, state==s] in
-                let len = length cand2 in
-                case cand2 of
-                 [] -> return []
+  checkCycle True level state stk "" history
+   (\history -> 
+     case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
+      [] ->
+        case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTbl automaton, state==fromState] of
+          [] ->
+            if length [True | ((s,lookahead),Accept) <- actTbl automaton, state==s] >= 1
+            then do 
+                   return []
+            else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl automaton, state==s] in
+                 let len = length cand2 in
+                 case cand2 of
+                  [] -> return []
                
-                 _  -> do listOfList <-
-                           mapM (\((terminal,snext),i)->
-                               let stk1 = push (StkTerminal (Terminal terminal 0 0 (toToken terminal))) stk in
-                               let stk2 = push (StkState snext) stk1 in do
-                               debug $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                         ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                               debug $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
-                               debug $ prlevel level ++ "Stack " ++ prStack stk2
-                               debug $ ""
-                               compGammas isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 history1)
-                                (zip cand2 [1..])
-                          return $ concat listOfList
-         nontermStateList -> do
-           let len = length nontermStateList
+                  _  -> do listOfList <-
+                             mapM (\ ((terminal,snext),i)->
+                                let stk1 = push (StkTerminal (Terminal terminal 0 0 (toToken terminal))) stk
+                                    stk2 = push (StkState snext) stk1
+                                in 
+                                checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
+                             
+                                  (\history1 -> do
+                                   debug $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                             ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
+                                   debug $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
+                                   debug $ prlevel level ++ "Stack " ++ prStack stk2
+                                   debug $ ""
+                                   compGammas isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 history1) )
+                                     (zip cand2 [1..])
+                           return $ concat listOfList
+          nontermStateList -> do
+            let len = length nontermStateList
    
-           listOfList <-
-             mapM (\((nonterminal,snext),i) -> do
-                let stk1 = push (StkNonterminal Nothing nonterminal) stk 
-                let stk2 = push (StkState snext) stk1
+            listOfList <-
+              mapM (\ ((nonterminal,snext),i) ->
+                 let stk1 = push (StkNonterminal Nothing nonterminal) stk
+                     stk2 = push (StkState snext) stk1
+                 in 
+                 checkCycle False level snext stk2 ("GOTO " ++ show snext ++ " " ++ nonterminal) history
+              
+                   (\history1 -> do
+                    debug $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
+                             ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
+                    debug $ prlevel level ++ "Goto/Shift symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
+                    debug $ prlevel level ++ "Stack " ++ prStack stk2
+                    debug $ ""
       
-                debug $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                          ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                debug $ prlevel level ++ "Goto/Shift symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
-                debug $ prlevel level ++ "Stack " ++ prStack stk2
-                debug $ ""
-      
-                compGammas isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 history1)
-                  (zip nontermStateList [1..])
-           return $ concat listOfList
+                    compGammas isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 history1) )
+                      (zip nontermStateList [1..])
+            return $ concat listOfList
 
-     prnumList -> do
-       let len = length prnumList
+      prnumList -> do
+        let len = length prnumList
      
-       debug $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
-       debug $ prlevel (level+1) ++ show [ (prodRules automaton) !! prnum | prnum <- prnumList ]
+        debug $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
+        debug $ prlevel (level+1) ++ show [ (prodRules automaton) !! prnum | prnum <- prnumList ]
      
-       let aCandidate = if null symbols then [] else [symbols]
-       if isSimple
-       then return aCandidate
-       else do listOfList <-
-                   mapM (\(prnum,i) -> do
-                       debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
-                       debug $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
-                       debug $ prlevel level ++ show ((prodRules automaton) !! prnum)
-                       debug $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
-                       debug $ prlevel level ++ "Stack " ++ prStack stk
-                       debug $ ""
-                       compGammasForReduce level isSimple  symbols state automaton stk history1 prnum)
-                        (zip prnumList [1..])
-               return $ concat listOfList -- aCandidate ++ concat listOfList
-
+        let aCandidate = if null symbols then [] else [symbols]
+        if isSimple
+        then return aCandidate
+        else do listOfList <-
+                 mapM (\ (prnum,i) ->
+                   (checkCycle False level state stk ("REDUCE " ++ show prnum) history
+                     (\history1 -> do
+                        debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
+                        debug $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
+                        debug $ prlevel level ++ show ((prodRules automaton) !! prnum)
+                        debug $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
+                        debug $ prlevel level ++ "Stack " ++ prStack stk
+                        debug $ ""
+                        compGammasForReduce level isSimple  symbols state automaton stk history1 prnum)) )
+                      (zip prnumList [1..])
+                return $ concat listOfList ) -- aCandidate ++ concat listOfList 
+  
 noCycleCheck :: Bool
 noCycleCheck = True
 
