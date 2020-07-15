@@ -381,10 +381,11 @@ data Automaton token ast =
   }
 
 compCandidates isSimple level symbols state automaton stk = do
-  gammas <- compGammas isSimple level symbols state automaton stk []
-  if isSimple
-  then return gammas
-  else return $ tail $ scanl (++) [] (filter (not . null) gammas)
+  compGammas isSimple level symbols state automaton stk []
+--  gammas <- compGammas isSimple level symbols state automaton stk []
+--  if isSimple
+--  then return gammas
+--  else return $ tail $ scanl (++) [] (filter (not . null) gammas)
 
 compGammas :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
   Bool -> Int -> [Candidate] -> Int -> Automaton token ast -> Stack token ast -> [(Int, Stack token ast, String)]-> IO [[Candidate]]
@@ -399,7 +400,7 @@ checkCycle flag level state stk action history cont =
   else cont ( (state,stk,action) : history )
 
 compGammas isSimple level symbols state automaton stk history = 
-  checkCycle True level state stk "" history
+  checkCycle False level state stk "" history
    (\history -> 
      case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
       [] ->
@@ -418,7 +419,9 @@ compGammas isSimple level symbols state automaton stk history =
                                 let stk1 = push (StkTerminal (Terminal terminal 0 0 (toToken terminal))) stk
                                     stk2 = push (StkState snext) stk1
                                 in 
-                                checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
+                                -- checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
+                                -- checkCycle True level state stk terminal history
+                                checkCycle True level snext stk2 terminal history
                              
                                   (\history1 -> do
                                    debug $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
@@ -437,7 +440,9 @@ compGammas isSimple level symbols state automaton stk history =
                  let stk1 = push (StkNonterminal Nothing nonterminal) stk
                      stk2 = push (StkState snext) stk1
                  in 
-                 checkCycle False level snext stk2 ("GOTO " ++ show snext ++ " " ++ nonterminal) history
+                 -- checkCycle False level snext stk2 ("GOTO " ++ show snext ++ " " ++ nonterminal) history
+                 -- checkCycle True level state stk nonterminal history
+                 checkCycle True level snext stk2 nonterminal history
               
                    (\history1 -> do
                     debug $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
@@ -460,8 +465,9 @@ compGammas isSimple level symbols state automaton stk history =
         if isSimple
         then return aCandidate
         else do listOfList <-
-                 mapM (\ (prnum,i) ->
-                   (checkCycle False level state stk ("REDUCE " ++ show prnum) history
+                 mapM (\ (prnum,i) -> (
+                   -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
+                   checkCycle True level state stk (show prnum) history
                      (\history1 -> do
                         debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
                         debug $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
@@ -497,10 +503,13 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
     debug $ prlevel level ++ "GOTO after REDUCE: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
     debug $ prlevel level ++ "Goto/Shift symbols: " ++ "[]"
     debug $ prlevel level ++ "Stack " ++ prStack stk3
-    debug $ ""      
+    debug $ ""
+
+    debug $ prlevel level ++ "Found a gamma: " ++ show symbols
+    debug $ ""
     
     listOfList <- compGammas isSimple (level+1) [] toState automaton stk3 history
-    return $ symbols : listOfList
+    return $ symbols : map (symbols ++) listOfList
 
 --
 successfullyParsed :: IO [EmacsDataItem]
