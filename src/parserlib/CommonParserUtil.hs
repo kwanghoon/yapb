@@ -375,10 +375,16 @@ data Automaton token ast =
     prodRules :: ProdRules
   }
 
-compCandidates :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+compCandidates isSimple level symbols state automaton stk cursorPos = do
+  gammas <- compGammas isSimple level symbols state automaton stk cursorPos
+  if isSimple
+  then return gammas
+  else return $ tail $ scanl (++) [] (filter (not . null) gammas)
+
+compGammas :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
   Bool -> Int -> [Candidate] -> Int -> Automaton token ast -> Stack token ast -> Int -> IO [[Candidate]]
   
-compCandidates isSimple level symbols state automaton stk cursorPos = do
+compGammas isSimple level symbols state automaton stk cursorPos = do
   -- debug (prlevel level ++ show symbols)
   case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
    [] ->
@@ -386,7 +392,7 @@ compCandidates isSimple level symbols state automaton stk cursorPos = do
        [] ->
          if length [True | ((s,lookahead),Accept) <- actTbl automaton, state==s] >= 1
          then do 
-                debug $ prlevel level ++ "DONE: " --  ++ show [symbols] ++ "\n"
+               --  debug $ prlevel level ++ "DONE: " --  ++ show symbols ++ "\n"
                 return [] -- symbols == [')',')',')']
          else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl automaton, state==s] in
               let len = length cand2 in
@@ -400,7 +406,7 @@ compCandidates isSimple level symbols state automaton stk cursorPos = do
                              debug $ prlevel level ++ "shift[" ++ show i ++ "/" ++ show len ++ "]: "
                                        ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
                              debug $ prlevel level ++ ("Stack " ++ prStack stk2)
-                             compCandidates isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 cursorPos)
+                             compGammas isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 cursorPos)
                               (zip cand2 [1..])
                         return $ concat listOfList
        nontermStateList -> do
@@ -414,36 +420,36 @@ compCandidates isSimple level symbols state automaton stk cursorPos = do
               debug $ prlevel level ++ "goto[" ++ show i ++ "/" ++ show len ++ "] at "
                         ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
       
-              compCandidates isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 cursorPos)
+              compGammas isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 cursorPos)
                 (zip nontermStateList [1..])
          return $ concat listOfList
 
    prnumList -> do
      let len = length prnumList
      
-     debug $ prlevel level     ++ "Found # of prNumList to reduce: " ++ show len ++ " at State " ++ show state
+     debug $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
      debug $ prlevel (level+1) ++ show [ (prodRules automaton) !! prnum | prnum <- prnumList ]
      
      debug $ prlevel level     
-     debug $ prlevel level ++ "CANDIDATE: " ++ show [symbols]
+     debug $ prlevel level ++ "Goto/Shift symbols: " ++ show [symbols]
      
      let aCandidate = if null symbols then [] else [symbols]
      if isSimple
      then return aCandidate
      else do listOfList <-
                  mapM (\(prnum,i) -> do
-                     debug $ prlevel level ++ "reduce[" ++ show i ++ "/" ++ show len ++ "]: "
-                              ++ show state ++ " " ++ "lookahead" ++ " prod #" ++ show prnum
+                     debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
+                     debug $ prlevel level ++ "reduce" ++ " prod #" ++ show prnum
                      debug $ prlevel level ++ show ((prodRules automaton) !! prnum)
                      debug $ prlevel level ++ ("Stack " ++ prStack stk)
-                     compCandidatesForReduce level isSimple  symbols state automaton stk cursorPos prnum)
+                     compGammasForReduce level isSimple  symbols state automaton stk cursorPos prnum)
                       (zip prnumList [1..])
-             return $ aCandidate ++ concat listOfList
+             return $ concat listOfList -- aCandidate ++ concat listOfList
 
 noCycleCheck :: Bool
 noCycleCheck = True
 
-compCandidatesForReduce level isSimple  symbols state automaton stk cursorPos prnum = 
+compGammasForReduce level isSimple  symbols state automaton stk cursorPos prnum = 
   let prodrule   = (prodRules automaton) !! prnum
     --  builderFun = (pFunList automaton)  !! prnum
       lhs = fst prodrule
@@ -456,26 +462,30 @@ compCandidatesForReduce level isSimple  symbols state automaton stk cursorPos pr
   in do
   debug $ prlevel level ++ "TEST: |stk| < cursorPos - 2 + |rhs|*2 : "
               ++ show (length stk) ++ " < " ++ show (cursorPos-2) ++ " + " ++ show (rhsLength*2)
-  if rhsLength <= 2 || length stk < cursorPos - 2 + rhsLength *2      -- noCycleCheck || (null rhs || lhs /= head rhs)
-  then do
-    let stk1 = drop (rhsLength*2) stk
-    let topState = currentState stk1
-    let toState =
-         case lookupGotoTable (gotoTbl automaton) topState lhs of
-           Just state -> state
-           Nothing -> error $ "[compCandidatesForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
-    -- let stk2 = push (StkNonterminal ast lhs) stk1
-    let stk2 = push (StkNonterminal Nothing lhs) stk1 
-    let stk3 = push (StkState toState) stk2
-    debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
+  if (rhsLength > length symbols) == False
+  then return []
+  else
+    if rhsLength <= 2 || length stk < cursorPos - 2 + rhsLength *2      -- noCycleCheck || (null rhs || lhs /= head rhs)
+    then do
+      let stk1 = drop (rhsLength*2) stk
+      let topState = currentState stk1
+      let toState =
+           case lookupGotoTable (gotoTbl automaton) topState lhs of
+             Just state -> state
+             Nothing -> error $ "[compGammasForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
+      -- let stk2 = push (StkNonterminal ast lhs) stk1
+      let stk2 = push (StkNonterminal Nothing lhs) stk1 
+      let stk3 = push (StkState toState) stk2
+      debug $ prlevel level ++ "goto: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
     
-    let cursorPos1 = length stk3
-    compCandidates isSimple (level+1) symbols toState automaton stk3 cursorPos1
-  else do
-    -- debug $ prlevel level ++ "DONE: [lhs == head rhs] " ++ lhs ++ " == " ++ head rhs
-    debug $ prlevel level ++ "DONE: |stk| > cursorPos + |rhs|*2 : "
-              ++ show (length stk) ++ " > " ++ show cursorPos ++ " + " ++ show (rhsLength*2)
-    return []
+      let cursorPos1 = length stk3
+      listOfList <- compGammas isSimple (level+1) [] toState automaton stk3 cursorPos1
+      return $ symbols : listOfList
+    else do
+      -- debug $ prlevel level ++ "DONE: [lhs == head rhs] " ++ lhs ++ " == " ++ head rhs
+      -- debug $ prlevel level ++ "DONE: |stk| > cursorPos + |rhs|*2 : "
+      --          ++ show (length stk) ++ " > " ++ show cursorPos ++ " + " ++ show (rhsLength*2)
+      return []
 
 --
 successfullyParsed :: IO [EmacsDataItem]
