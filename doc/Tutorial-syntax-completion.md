@@ -52,7 +52,7 @@ import System.IO
 
 main :: IO ()
 main = do
- emacsServer computeCand      // *main* calls *emacsServer* with *computeCand* as an argument.
+ emacsServer computeCand      -- *main* calls *emacsServer* with *computeCand* as an argument.
 
 computeCand :: String -> Bool -> IO [EmacsDataItem]
 computeCand programTextUptoCursor isSimpleMode = ((do
@@ -126,9 +126,12 @@ $ stack build
 $ stack exec arith-exe     <====== To start a server
 ~~~
 
-You launch an Emacs window to open a program file, say, *app/example/test1.arith*. 
-- Give an Emacs command, *M-x load-file*, to enter *load.el* in the same directory as the program file,
-- Choose a mode either by *M-x syntaxcomplete-mode* and *M-x syntaxcomplete-mode-nested* for computing simple candidates and nested candidates.   
+You need to have three Emacs scripts: load.el, popup.el, and syntaxcompletion-mode.el. You can simply copy these three files from yapb/app/syntaxcompletion/examples/{load,popup,syntaxcompletion-mode}.el to your directory, say, app/example/.
+
+Then run Emacs to open a program file, say, *app/example/test1.arith*. The following commands are available.
+- *M-x load-file*, to enter *load.el* in the same directory (app/example/)
+- *M-x syntaxcomplete-mode* for a simple mode
+- *M-x syntaxcomplete-mode-nested* for a nested mode
 
 Now you are assumed to edit the program text.  
 ~~~
