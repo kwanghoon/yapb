@@ -108,6 +108,7 @@ executables:
 ~~~
 
 Note that YAPB-0.1.0 is available at Hackage, but YAPB-0.1.1 is not. So, you have to git-clone the yapb repository together, and *stack.yaml* of *arith* needs a change as follows.
+
 [*stack.yaml* in *arith*]
 ~~~
 packages:
