@@ -490,7 +490,11 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
       rhsLength = length rhs
   in 
   if (rhsLength > length symbols) == False
-  then return []
+  then do
+    debug $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT " ++ show rhsLength ++ ">" ++ show (length symbols)
+    debug $ prlevel (level+1) ++ show symbols
+    debug $ prlevel level
+    return []
   else do
     let stk1 = drop (rhsLength*2) stk
     let topState = currentState stk1
