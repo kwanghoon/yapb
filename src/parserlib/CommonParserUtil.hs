@@ -461,23 +461,24 @@ compGammas isSimple level symbols state automaton stk history =
         debug $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
         debug $ prlevel (level+1) ++ show [ (prodRules automaton) !! prnum | prnum <- prnumList ]
      
-        let aCandidate = if null symbols then [] else [symbols]
-        if isSimple
-        then return aCandidate
-        else do listOfList <-
-                 mapM (\ (prnum,i) -> (
-                   -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
-                   checkCycle True level state stk (show prnum) history
-                     (\history1 -> do
-                        debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
-                        debug $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
-                        debug $ prlevel level ++ show ((prodRules automaton) !! prnum)
-                        debug $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
-                        debug $ prlevel level ++ "Stack " ++ prStack stk
-                        debug $ ""
-                        compGammasForReduce level isSimple  symbols state automaton stk history1 prnum)) )
-                      (zip prnumList [1..])
-                return $ concat listOfList ) -- aCandidate ++ concat listOfList 
+        -- let aCandidate = if null symbols then [] else [symbols]
+        -- if isSimple
+        -- then return aCandidate
+        -- else do listOfList <-
+        do listOfList <-
+            mapM (\ (prnum,i) -> (
+              -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
+              checkCycle True level state stk (show prnum) history
+                (\history1 -> do
+                   debug $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
+                   debug $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
+                   debug $ prlevel level ++ show ((prodRules automaton) !! prnum)
+                   debug $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
+                   debug $ prlevel level ++ "Stack " ++ prStack stk
+                   debug $ ""
+                   compGammasForReduce level isSimple  symbols state automaton stk history1 prnum)) )
+                 (zip prnumList [1..])
+           return $ concat listOfList )
   
 noCycleCheck :: Bool
 noCycleCheck = True
@@ -489,7 +490,7 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
       
       rhsLength = length rhs
   in 
-  if (rhsLength > length symbols) == False
+  if ( rhsLength == 0 || (rhsLength > length symbols) ) == False
   then do
     debug $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT " ++ show rhsLength ++ ">" ++ show (length symbols)
     debug $ prlevel (level+1) ++ show symbols
@@ -511,9 +512,11 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
 
     debug $ prlevel level ++ "Found a gamma: " ++ show symbols
     debug $ ""
-    
-    listOfList <- compGammas isSimple (level+1) [] toState automaton stk3 history
-    return $ symbols : map (symbols ++) listOfList
+
+    if isSimple
+    then return (if null symbols then [] else [symbols])
+    else do listOfList <- compGammas isSimple (level+1) [] toState automaton stk3 history
+            return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
 
 --
 successfullyParsed :: IO [EmacsDataItem]
