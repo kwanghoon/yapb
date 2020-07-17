@@ -354,3 +354,14 @@ Run the arith parser by stack.
   (x = 123); (x = (x + 1)); (y = x); (y = (y - ((1 * 2) / 3))); (z = (y = x))
 ~~~
 
+
+### When your parser looks not working
+
+This parser builder system leaves a .hash file after an automaton is generated from a grammar.
+This is useful for not generating the automation repetitedly for the same grammar.
+
+However, the presence of the hash file could mislead the system in case, for example, a given
+grammar is not LALR(1) because of such as shift/reduce confict, so no automaton is generated, but the hash file is generated.
+
+A simple work around is to just delete the hash file and return your parser (possibly after fixing
+your grammar to make it LALR(1)). Then the system will generate an automaton.
