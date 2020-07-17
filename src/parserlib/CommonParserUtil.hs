@@ -490,7 +490,7 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
       
       rhsLength = length rhs
   in 
-  if ( rhsLength == 0 || (rhsLength > length symbols) ) == False
+  if ( {- rhsLength == 0 || -} (rhsLength > length symbols) ) == False
   then do
     debug $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT " ++ show rhsLength ++ ">" ++ show (length symbols)
     debug $ prlevel (level+1) ++ show symbols
