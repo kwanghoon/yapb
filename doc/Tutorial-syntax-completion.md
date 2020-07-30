@@ -87,7 +87,7 @@ computeCand programTextUptoCursor isSimpleMode = ((do
 ~~~
 
 ### Configure the Haskell project to use YAPB
-To use the function of automatic computation of syntax completion candidates, the project must use YAPB 0.1.1. 
+To use the function of automatic computation of syntax completion candidates, the project must use YAPB >=0.1.1. 
 
 [*package.yaml* of *arith*]  
 ~~~
@@ -107,19 +107,17 @@ executables:
 
 ~~~
 
-Note that YAPB-0.1.0 is available at Hackage, but YAPB-0.1.1 is not. So, you have to git-clone the yapb repository together, and *stack.yaml* of *arith* needs a change as follows.
+Note that *stack.yaml* of *arith* needs a change to download yapb-0.1.1 from Hackage as follows.
 
 [*stack.yaml* in *arith*]
 ~~~
-packages:
-- .
-- ../yapb    <====== To refer to yapb-0.1.1 assuming the directory of yapb is in the same level. Otherwise, you may adjust the path.
+extra-deps:
+  - yapb-0.1.1
 ~~~
- - This inconvenience will disappear after yapb-0.1.1 is registered at Hackage. 
 
 
 ### Build arith and run a server
-To use the function of automatic computation of syntax completion candidates, the project must use YAPB 0.1.1. 
+To use the function of automatic computation of syntax completion candidates, the project must use YAPB >=0.1.1. 
 
 ~~~
 $ stack clean
