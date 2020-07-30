@@ -62,9 +62,11 @@ concatWith [] sep = ""
 concatWith [a] sep = a
 concatWith (a:b:theRest) sep = a ++ sep ++ concatWith (b:theRest) sep
 
+getHashFileName fileName = fileName ++ ".hash"
+
 writeOnceWithHash :: String -> String -> IO Bool
 writeOnceWithHash fileName text = do
-  let hashFileName = fileName ++ ".hash"
+  let hashFileName = getHashFileName fileName
   let newHash = hash text
   
   fileExists <- doesFileExist fileName

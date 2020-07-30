@@ -18,7 +18,12 @@ import LoadAutomaton
 
 import Data.List (nub)
 
-import SynCompInterface 
+import SynCompInterface
+
+import Prelude hiding (catch)
+import System.Directory
+import Control.Exception
+import System.IO.Error hiding (catch)
 
 -- Lexer Specification
 type RegExpStr    = String
@@ -174,11 +179,14 @@ parsing parserSpec terminalList = do
     loadAutomaton grammarFileName actionTblFileName gotoTblFileName
 
   -- 4. Run the automaton
-  ast <- runAutomaton actionTbl gotoTbl prodRules pFunList terminalList
-  
-  -- putStrLn "done." -- It was for the interafce with Java-version RPC calculus interpreter.
-  
-  return ast
+  if null actionTbl || null gotoTbl || null prodRules
+    then do let hashFile = getHashFileName specFileName
+            putStrLn $ "Delete " ++ hashFile
+            removeIfExists hashFile
+            error $ "Error: Empty automation: please rerun"
+    else do ast <- runAutomaton actionTbl gotoTbl prodRules pFunList terminalList
+            -- putStrLn "done." -- It was for the interafce with Java-version RPC calculus interpreter.
+            return ast
 
   where
     specFileName      = parserSpecFile parserSpec
@@ -202,6 +210,13 @@ parsing parserSpec terminalList = do
                                  actionTblFileName ++ ", "  ++
                                  gotoTblFileName ++ ", " ++
                                  grammarFileName);
+--
+removeIfExists :: FilePath -> IO ()
+removeIfExists fileName = removeFile fileName `catch` handleExists
+  where handleExists e
+          | isDoesNotExistError e = return ()
+          | otherwise = throwIO e
+
 
 -- Stack
 
