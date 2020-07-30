@@ -31,7 +31,7 @@ executables:
 ~~~
 
 Note that *stack.yaml* of *arith* needs a change to download yapb-0.1.1 from Hackage as follows.
-~~~
+
 [*stack.yaml* in *arith*]
 ~~~
 extra-deps:
