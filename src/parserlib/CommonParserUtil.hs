@@ -17,6 +17,7 @@ import AutomatonType
 import LoadAutomaton
 
 import Data.List (nub)
+import Data.Maybe
 
 import SynCompInterface
 
@@ -77,24 +78,26 @@ prLexError (CommonParserUtil.LexError line col text) = do
 --
 lexing :: TokenInterface token =>
           LexerSpec token -> String -> IO [Terminal token]
-lexing lexerspec text = lexing_ lexerspec 1 1 text
+lexing lexerspec text = do
+  (line, col, terminalList) <- lexing_ lexerspec 1 1 text
+  return terminalList
 
 lexing_ :: TokenInterface token =>
-           LexerSpec token -> Line -> Column -> String -> IO [Terminal token]
+           LexerSpec token -> Line -> Column -> String -> IO (Line, Column, [Terminal token])
 lexing_ lexerspec line col [] = do
   let eot = endOfToken lexerspec 
-  return [Terminal (fromToken eot) line col eot]
+  return (line, col, [Terminal (fromToken eot) line col eot])
    
 lexing_ lexerspec line col text = do
   (matchedText, theRestText, maybeTok) <-
     matchLexSpec line col (lexerSpecList lexerspec) text
   let (line_, col_) = moveLineCol line col matchedText
-  terminalList <- lexing_ lexerspec line_ col_ theRestText
+  (line__, col__, terminalList) <- lexing_ lexerspec line_ col_ theRestText
   case maybeTok of
-    Nothing  -> return terminalList
+    Nothing  -> return (line__, col__, terminalList)
     Just tok -> do
       let terminal = Terminal matchedText line col tok
-      return (terminal:terminalList)
+      return (line__, col__, terminal:terminalList)
 
 matchLexSpec :: TokenInterface token =>
                 Line -> Column -> LexerSpecList token -> String
@@ -124,15 +127,22 @@ moveLineCol line col (ch:text)   = moveLineCol line (col+1) text
 -- The parsing machine
 --------------------------------------------------------------------------------
 
+type CurrentState    = Int
+type StateOnStackTop = Int
+type LhsSymbol = String
+
+type AutomatonSnapshot token ast =   -- TODO: Refactoring
+  (Stack token ast, ActionTable, GotoTable, ProdRules)
+
 --
 data ParseError token ast where
     -- teminal, state, stack actiontbl, gototbl
     NotFoundAction :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      (Terminal token) -> Int -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
+      (Terminal token) -> CurrentState -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
     
     -- topState, lhs, stack, actiontbl, gototbl,
     NotFoundGoto :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       Int -> String -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
+       StateOnStackTop -> LhsSymbol -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
 
   deriving (Typeable)
 
@@ -216,6 +226,9 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
   where handleExists e
           | isDoesNotExistError e = return ()
           | otherwise = throwIO e
+
+parsing_ parserSpec terminalListUptoCursor terminalListAfterCursor = do
+  parsing parserSpec terminalListUptoCursor
 
 
 -- Stack
@@ -382,8 +395,9 @@ debug msg = if flag then putStrLn msg else return ()
 
 prlevel n = take n (let spaces = ' ' : spaces in spaces)
 
---
-data Candidate =
+-- | Computing candidates
+
+data Candidate =     -- Todo: data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol String
   | NonterminalSymbol String
   deriving (Show,Eq)
@@ -395,26 +409,35 @@ data Automaton token ast =
     prodRules :: ProdRules
   }
 
+compCandidates
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     Bool
+     -> Int
+     -> [Candidate]
+     -> Int
+     -> Automaton token ast
+     -> Stack token ast
+     -> IO [[Candidate]]
+
 compCandidates isSimple level symbols state automaton stk = do
-  compGammas isSimple level symbols state automaton stk []
---  gammas <- compGammas isSimple level symbols state automaton stk []
+  compGammasDfs isSimple level symbols state automaton stk []
+--  gammas <- compGammasDfs isSimple level symbols state automaton stk []
 --  if isSimple
 --  then return gammas
 --  else return $ tail $ scanl (++) [] (filter (not . null) gammas)
 
-compGammas :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-  Bool -> Int -> [Candidate] -> Int -> Automaton token ast -> Stack token ast -> [(Int, Stack token ast, String)]-> IO [[Candidate]]
+compGammasDfs
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     Bool
+     -> Int
+     -> [Candidate]
+     -> Int
+     -> Automaton token ast
+     -> Stack token ast
+     -> [(Int, Stack token ast, String)]
+     -> IO [[Candidate]]
 
-checkCycle flag level state stk action history cont =
-  if flag && (state,stk,action) `elem` history
-  then do debug $ prlevel level ++ "CYCLE is detected !!"
-          debug $ prlevel level ++ show state ++ " " ++ action
-          debug $ prlevel level ++ prStack stk
-          debug $ ""
-          return []
-  else cont ( (state,stk,action) : history )
-
-compGammas isSimple level symbols state automaton stk history = 
+compGammasDfs isSimple level symbols state automaton stk history = 
   checkCycle False level state stk "" history
    (\history -> 
      case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
@@ -444,7 +467,7 @@ compGammas isSimple level symbols state automaton stk history =
                                    debug $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
                                    debug $ prlevel level ++ "Stack " ++ prStack stk2
                                    debug $ ""
-                                   compGammas isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 history1) )
+                                   compGammasDfs isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 history1) )
                                      (zip cand2 [1..])
                            return $ concat listOfList
           nontermStateList -> do
@@ -466,7 +489,7 @@ compGammas isSimple level symbols state automaton stk history =
                     debug $ prlevel level ++ "Stack " ++ prStack stk2
                     debug $ ""
       
-                    compGammas isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 history1) )
+                    compGammasDfs isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 history1) )
                       (zip nontermStateList [1..])
             return $ concat listOfList
 
@@ -491,14 +514,11 @@ compGammas isSimple level symbols state automaton stk history =
                    debug $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
                    debug $ prlevel level ++ "Stack " ++ prStack stk
                    debug $ ""
-                   compGammasForReduce level isSimple  symbols state automaton stk history1 prnum)) )
+                   compGammasDfsForReduce level isSimple  symbols state automaton stk history1 prnum)) )
                  (zip prnumList [1..])
            return $ concat listOfList )
   
-noCycleCheck :: Bool
-noCycleCheck = True
-
-compGammasForReduce level isSimple  symbols state automaton stk history prnum = 
+compGammasDfsForReduce level isSimple  symbols state automaton stk history prnum = 
   let prodrule   = (prodRules automaton) !! prnum
       lhs = fst prodrule
       rhs = snd prodrule
@@ -517,7 +537,7 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
     let toState =
          case lookupGotoTable (gotoTbl automaton) topState lhs of
            Just state -> state
-           Nothing -> error $ "[compGammasForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
+           Nothing -> error $ "[compGammasDfsForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
     let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
     let stk3 = push (StkState toState) stk2
     debug $ prlevel level ++ "GOTO after REDUCE: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
@@ -530,39 +550,93 @@ compGammasForReduce level isSimple  symbols state automaton stk history prnum =
 
     if isSimple
     then return (if null symbols then [] else [symbols])
-    else do listOfList <- compGammas isSimple (level+1) [] toState automaton stk3 history
+    else do listOfList <- compGammasDfs isSimple (level+1) [] toState automaton stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
 
---
+-- | Cycle checking
+noCycleCheck :: Bool
+noCycleCheck = True
+
+checkCycle flag level state stk action history cont =
+  if flag && (state,stk,action) `elem` history
+  then do
+    debug $ prlevel level ++ "CYCLE is detected !!"
+    debug $ prlevel level ++ show state ++ " " ++ action
+    debug $ prlevel level ++ prStack stk
+    debug $ ""
+    return []
+  else cont ( (state,stk,action) : history )
+
+-- | Parsing programming interfaces
+
+-- | successfullyParsed
 successfullyParsed :: IO [EmacsDataItem]
 successfullyParsed = return [SynCompInterface.SuccessfullyParsed]
 
+-- | handleLexError
 handleLexError :: IO [EmacsDataItem]
 handleLexError = return [SynCompInterface.LexError]
+
+-- | handleParseError
+handleParseError :: TokenInterface token => Bool -> [Terminal token] -> ParseError token ast -> IO [EmacsDataItem]
+handleParseError isSimple terminalListAfterCursor parseError =
+  unwrapParseError isSimple terminalListAfterCursor parseError
   
-handleParseError isSimple (NotFoundAction _ state stk actTbl gotoTbl prodRules terminalList) =
-  _handleParseError isSimple state stk actTbl gotoTbl prodRules terminalList
-handleParseError isSimple (NotFoundGoto state _ stk actTbl gotoTbl prodRules terminalList) =
-  _handleParseError isSimple state stk actTbl gotoTbl prodRules terminalList
+unwrapParseError isSimple terminalListAfterCursor (NotFoundAction _ state stk actTbl gotoTbl prodRules terminalList) =
+  arrivedAtTheEndOfSymbol isSimple terminalListAfterCursor state stk actTbl gotoTbl prodRules terminalList
+unwrapParseError isSimple terminalListAfterCursor (NotFoundGoto state _ stk actTbl gotoTbl prodRules terminalList) =
+  arrivedAtTheEndOfSymbol isSimple terminalListAfterCursor state stk actTbl gotoTbl prodRules terminalList
 
-
-_handleParseError isSimple state stk _actTbl _gotoTbl _prodRules terminalList = 
-   if length terminalList == 1 then do -- [$]
-     let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-     candidates <- compCandidates isSimple 0 [] state automaton stk
-     let cands = candidates
-     let strs = nub [ concatStrList strList | strList <- map (map showSymbol) cands ]
-     let rawStrs = nub [ strList | strList <- map (map showRawSymbol) cands ]
-     mapM_ (putStrLn . show) rawStrs
-     return $ map Candidate strs
-   else
+arrivedAtTheEndOfSymbol isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules terminalList =
+  if length terminalList == 1 then do -- [$]
+     _handleParseError isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules
+  else
      return [SynCompInterface.ParseError (map terminalToString terminalList)]
 
+_handleParseError isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules = do
+  let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+  candidateListList <- compCandidates isSimple 0 [] state automaton stk
+  let colorListList =
+       [ filterCandidates candidateList terminalListAfterCursor | candidateList <- candidateListList ]
+  let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
+  let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
+  mapM_ (putStrLn . show) rawStrListList
+  return $ map Candidate strList
+
+-- | Filter the given candidates with the following texts
+data EmacsColor =
+    Gray  String Line Column -- Overlapping with some in the following text
+  | White String             -- Not overlapping
+  deriving Show
+
+filterCandidates :: (TokenInterface token) => [Candidate] -> [Terminal token] -> [EmacsColor]
+filterCandidates candidates terminalListAfterCursor =
+  f candidates terminalListAfterCursor []
+  where
+    f (a:alpha) (b:beta) accm
+      | equal a b       = f alpha beta     (Gray (strCandidate a) (terminalToLine b) (terminalToCol b) : accm)
+      | otherwise       = f alpha (b:beta) (White (strCandidate a) : accm)
+    f [] beta accm      = accm
+    f (a:alpha) [] accm = f alpha [] (White (strCandidate a) : accm)
+
+    equal (TerminalSymbol s1)    (Terminal s2 _ _ _) = s1==s2
+    equal (NonterminalSymbol s1) _                   = False
+
+    strCandidate (TerminalSymbol s) = s
+    strCandidate (NonterminalSymbol s) = s
+
+-- | Utilities
 showSymbol (TerminalSymbol s) = s
 showSymbol (NonterminalSymbol _) = "..."
 
 showRawSymbol (TerminalSymbol s) = s
 showRawSymbol (NonterminalSymbol s) = s
+
+showEmacsColor (Gray s line col) = "gray " ++ s ++ " " ++ show line ++ " " ++ show col ++ " "
+showEmacsColor (White s)         = "white " ++ "..."
+
+showRawEmacsColor (Gray s line col) = s ++ "@" ++ show line ++ "," ++ show col ++ " "
+showRawEmacsColor (White s)         = s
 
 concatStrList [] = "" -- error "The empty candidate?"
 concatStrList [str] = str
