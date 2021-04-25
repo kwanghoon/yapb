@@ -32,9 +32,8 @@ data ParseErrorWithLineCol token ast = ParseErrorWithLineCol Int Int (ParseError
 instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show ast)
   => Exception (ParseErrorWithLineCol token ast)
 
-computeCand :: String -> {- String -> -} Bool -> IO [EmacsDataItem]
-computeCand programTextUptoCursor isSimpleMode {- programTextAfterCursor -} = do
-  let programTextAfterCursor = ""   -- Todo: Fix this as an arugment!!
+computeCand :: String -> String -> Bool -> IO [EmacsDataItem]
+computeCand programTextUptoCursor programTextAfterCursor isSimpleMode = do
   ((computeCand_ isSimpleMode programTextUptoCursor programTextAfterCursor
     `catch` \e -> case e :: LexError of _ -> handleLexError)
     `catch` \e -> case e :: ParseErrorWithLineCol Token AST of ParseErrorWithLineCol line column e -> do {

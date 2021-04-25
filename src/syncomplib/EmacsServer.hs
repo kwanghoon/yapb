@@ -8,7 +8,7 @@ import Data.ByteString.Char8
 import Control.Monad
 import Control.Exception
 
-type ComputeCandidate = String -> Bool -> {- Int -> -} IO [EmacsDataItem]
+type ComputeCandidate = String -> String -> Bool -> {- Int -> -} IO [EmacsDataItem]
 
 emacsServer :: ComputeCandidate -> IO ()
 emacsServer computeCand = do
@@ -26,7 +26,8 @@ acceptLoop computeCand sock = forever $ do
     (conn, _) <- accept sock
     str <- getSource conn
     print str
-    candidateList <- computeCand str isSimple {- cursorPos -} -- What is cursorPos useful for?
+    let strAfterCursor = ""
+    candidateList <- computeCand str strAfterCursor isSimple {- cursorPos -} -- What is cursorPos useful for?
     print (Prelude.map show candidateList)
     (conn, _) <- accept sock
     sendCandidateList conn candidateList
