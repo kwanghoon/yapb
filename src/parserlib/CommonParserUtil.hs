@@ -623,7 +623,7 @@ filterCandidates candidates terminalListAfterCursor =
     equal (NonterminalSymbol s1) _                   = False
 
     strCandidate (TerminalSymbol s) = s
-    strCandidate (NonterminalSymbol s) = s
+    strCandidate (NonterminalSymbol s) = "..."
 
 -- | Utilities
 showSymbol (TerminalSymbol s) = s
@@ -633,7 +633,7 @@ showRawSymbol (TerminalSymbol s) = s
 showRawSymbol (NonterminalSymbol s) = s
 
 showEmacsColor (Gray s line col) = "gray " ++ s ++ " " ++ show line ++ " " ++ show col ++ " "
-showEmacsColor (White s)         = "white " ++ "..."
+showEmacsColor (White s)         = "white " ++ s
 
 showRawEmacsColor (Gray s line col) = s ++ "@" ++ show line ++ "," ++ show col ++ " "
 showRawEmacsColor (White s)         = s
