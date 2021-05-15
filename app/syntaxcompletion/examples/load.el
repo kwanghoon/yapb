@@ -1,2 +1,2 @@
-(load-file "popup.el")
+(load-file "popup-candidates.el")
 (load-file "syntaxcompletion-mode.el")

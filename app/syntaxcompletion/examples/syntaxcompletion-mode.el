@@ -1,7 +1,6 @@
 (defvar syntaxcomplete-mode-map nil)
 (setq syntaxcomplete-mode-map (make-sparse-keymap))
-
-(define-key syntaxcomplete-mode-map [(tab)] 'complete)
+(define-key syntaxcomplete-mode-map "\t" 'complete)
 
 (defun toList (str)
   (split-string str "\n"))
@@ -25,6 +24,10 @@
   (disconnect-server)
 
   (connect-server)
+  (send-buffer-after-cursor)
+  (disconnect-server)
+
+  (connect-server)
   (set-process-filter
    (get-process "syntaxa") 
    (lambda (process output)
@@ -39,10 +42,7 @@
 	    (let* ((outputList (toList output))
 		   (cands (cdr outputList))
 		   )
-	      (if (= (length cands) 1)
-		  (insert (car cands))
-		(let ((name (popup-menu* cands)))
-		  (insert name)))))))))
+	      (popup-cands cands)))))))
 
 (defun connect-server ()
   (setq buf (get-buffer-create "syntax1"))
@@ -73,6 +73,14 @@
   (process-send-string 
    server 
     (buffer-substring 1 (point))
+   )
+  )
+
+(defun send-buffer-after-cursor ()
+  (interactive)
+  (process-send-string 
+   server 
+    (buffer-substring (point) (point-max))
    )
   )
 

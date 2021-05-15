@@ -388,7 +388,7 @@ runAutomaton actionTbl gotoTbl prodRules pFunList terminalList = do
           let stack3 = push (StkState toState) stack2
           run terminalList stack3
 
-flag = True
+flag = False
 
 debug :: String -> IO ()
 debug msg = if flag then putStrLn msg else return ()
@@ -616,7 +616,7 @@ filterCandidates candidates terminalListAfterCursor =
     f (a:alpha) (b:beta) accm
       | equal a b       = f alpha beta     (Gray (strCandidate a) (terminalToLine b) (terminalToCol b) : accm)
       | otherwise       = f alpha (b:beta) (White (strCandidate a) : accm)
-    f [] beta accm      = accm
+    f [] beta accm      = reverse accm
     f (a:alpha) [] accm = f alpha [] (White (strCandidate a) : accm)
 
     equal (TerminalSymbol s1)    (Terminal s2 _ _ _) = s1==s2
