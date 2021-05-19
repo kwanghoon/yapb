@@ -4,7 +4,7 @@ github:              "kwanghoon/yapb"
 license:             BSD3
 author:              "Kwanghoon Choi"
 maintainer:          "lazyswamp@gmail.com"
-copyright:           "2020 Kwanghoon Choi"
+copyright:           "2020-2021 Kwanghoon Choi"
 
 extra-source-files:
 - README.md

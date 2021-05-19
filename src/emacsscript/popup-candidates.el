@@ -1,6 +1,12 @@
+(defun cand-len (cand)
+  (if cand
+      (let ((len (length (car cand))))
+        (+ len 1 (cand-len (cdr cand))))
+    0))
+
 (defun maxlen-aux (cands max)
   (if cands
-      (let ((len (length (car cands))))
+      (let ((len (cand-len (car cands))))
         (if (> len max)
             (maxlen-aux (cdr cands) len)
           (maxlen-aux (cdr cands) max)))
@@ -56,18 +62,27 @@
       (add-face-text-property 0 width unfocused-back nil candstr)
       (overlay-put o 'after-string (concat ws candstr)))))
 
-(defun make-cand (ccList)
+(defun make-cand (ccList index)
   (if (null ccList)
-      ""
-    (let* ((color (car ccList))
+      nil
+    (let ((color (car ccList))
            (cand (cadr ccList)))
       (cond ((equal color "white")
-             (concat cand " " (make-cand (cddr ccList))))
+             (cons cand (make-cand (cddr ccList) (+ 1 index))))
             ((equal color "gray")
-             (let ((line (caddr ccList))
-                   (column (cadr (cddr ccList))))
-               (add-face-text-property 0 (length cand) gray-foreground nil cand)
-               (concat cand " " (make-cand (cddr (cddr ccList))))))
+             (let* ((line (string-to-number (caddr ccList)))
+                    (column (string-to-number (cadr (cddr ccList))))
+                    (pt
+                     (save-excursion
+                       (goto-line line)
+                       (move-to-column (- column 1))
+                       (point)))
+                    )
+               (add-face-text-property
+                0 (length cand) overlapping-foreground nil cand)
+               (add-text-properties
+                0 (length cand) (list 'comment pt) cand)
+               (cons cand (make-cand (cddr (cddr ccList)) (+ 1 index)))))
             (t (throw 'color t))))))
 
 (defun deleteEmpStr (strList)
@@ -83,15 +98,44 @@
       nil
     (let* ((cc (car cands))
            (ccList (deleteEmpStr (split-string cc " ")))
-           (cand (make-cand ccList)))
+           (cand (make-cand ccList 0)))
       (cons cand (make-cands (cdr cands))))))
 
+(defun isWhiteChar (c)
+  (let ((str (char-to-string c)))
+    (or (equal str " ") (equal str "\t") (equal str "\n"))))
+
+(defun isGray (str)
+  (numberp (get-text-property 0 'comment str)))
+
+(defun insert-cand (cand offset)
+  (if (null cand)
+      t
+    (let* ((str (car cand))
+           (pt (get-text-property 0 'comment str))) 
+      (if (numberp pt) ;; If gray symbol (when point is in comment of str)
+          (progn ;; Gray symbols are not insert and cursor is moved forward.
+            (goto-char (+ pt offset))
+            (forward-char (length str))) 
+        (progn
+          (insert str) ;; White symbols are inserted.
+          (setq offset (+ offset (length str))))
+        )
+      (if (consp (cdr cand))
+          (if (or (and (isGray (cadr cand))
+                       (not (isWhiteChar (char-after (point)))))
+                  (not (isGray (cadr cand))))
+              (progn (insert " ")
+                     (setq offset (+ 1 offset)))
+            ))
+      (insert-cand (cdr cand) offset))))
+
 (defun popup-cands (cands_)
-  (let* ((cands (make-cands cands_))
+  (let* ((num_of_cands (length cands_))
+         (cands (make-cands cands_))
          (width (maxlen cands))
          (col (current-column))
          (line (current-line))
-         (num_of_cands (length cands))
          (num_of_lines_after_cursor
           (save-excursion
             (goto-char (point-max))
@@ -119,9 +163,8 @@
       (save-excursion (setq c (read-char)))
       (cond
        ((= c ?\r)
-        (let ((cand (nth i cands)))
-          (remove-text-properties 0 (length cand) '(face nil) cand)
-          (insert cand)
+        (let* ((cand (nth i cands)))
+          (insert-cand cand 0)
           (setq cond nil)))
        ((= c ?\C-n)
         (when (< i (- (length cands) 1))
@@ -136,14 +179,19 @@
           (focus i)
           ))
        (t (setq cond nil))
-      ))
+       ))
     (delovls ovlvec num_of_cands) ;; Delete overlays
     (delete-newlines num_of_cands) ;; Delete inserted newlines
     ))
 
 (setq unfocused-back '(:background "blue"))
 (setq focused-back '(:background "brightmagenta"))
-(setq gray-foreground '(:foreground "brightblack"))
+(setq overlapping-foreground '(:foreground "brightblack"))
+
+(defun strlist2str (strList)
+  (if (null strList)
+      ""
+    (concat (car strList) " " (strlist2str (cdr strList)))))
 
 (defun popup-cand (cand col width ovlvec index back)
   (let ((eolc
@@ -151,7 +199,7 @@
         (eolp
          (save-excursion (end-of-line) (point)))
         (candstr
-         (concat cand
+         (concat (strlist2str cand)
                  (make-string (- width (length cand)) ? ))))
     (aset candstrvec index candstr)
     (if (< col eolc)

@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1fe0a211524cdf541e7731597f6daf53712feb5ba3720d7d7f229923d6a17f8a
+-- hash: dabb3f110fc7ba12a2cb4ca3f172222601dfd706c0aa95bdd48a764f5234eb42
 
 name:           yapb
 version:        0.1.2
@@ -15,7 +15,7 @@ homepage:       https://github.com/kwanghoon/yapb#readme
 bug-reports:    https://github.com/kwanghoon/yapb/issues
 author:         Kwanghoon Choi
 maintainer:     lazyswamp@gmail.com
-copyright:      2020 Kwanghoon Choi
+copyright:      2020-2021 Kwanghoon Choi
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
