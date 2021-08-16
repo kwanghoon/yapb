@@ -5,6 +5,6 @@ data EmacsDataItem =
   | ParseError [String]   -- Parse error at some terminal (not $)
   | Candidate String      -- Parse error at the cursor position returning a candidate string 
   | SuccessfullyParsed    -- Successfully parsed until the cursor position
-  deriving Show
+  deriving (Eq, Show)
 
 

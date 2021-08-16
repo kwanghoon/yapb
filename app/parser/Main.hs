@@ -7,25 +7,26 @@ import Terminal
 import Parser
 import Expr
 
+import Run(doProcess)
+import ParserSpec (spec)
+
 import System.IO
+import System.Environment (getArgs, withArgs)
 
 main :: IO ()
 main = do
-  fileName <- readline "Enter your file: "
-  case fileName of
-    "exit" -> return ()
-    line -> doProcess line
+  args <- getArgs
+  _main args
 
-doProcess line = do
-  text <- readFile line 
-  putStrLn "Lexing..."
-  terminalList <- lexing lexerSpec text
-  putStrLn "Parsing..."
-  exprSeqAst <- parsing parserSpec terminalList
-  putStrLn "Pretty Printing..."
-  putStrLn (pprintAst exprSeqAst)
-  
-  
+-- Todo: Can I fix to have "test" as a command in stack exec?
+
+_main [] = return ()
+_main (fileName:args) = 
+  case fileName of
+    "test" -> withArgs [] spec
+    _ -> do _ <- doProcess True fileName
+            _main args
+
 readline msg = do
   putStr msg
   hFlush stdout

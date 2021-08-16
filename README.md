@@ -14,11 +14,12 @@
   - syncomp-exe: a syntax completion server for Emacs
   - (polyrpc)[https://github.com/kwanghoon/polyrpc]: a polyrpc programming language system including a parser, a poly rpc type checker, a slicing compiler, a poly cs type checker, and a poly cs interpter.
 
-### Download and build
+### Download, build, and test
 ~~~
   $ git clone https://github.com/kwanghoon/yapb
   $ cd yapb
   $ stack build
+  $ stack test
 ~~~
 
 ### Tutorial
