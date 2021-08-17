@@ -12,4 +12,4 @@ main = do
   args <- getArgs
   if "test" `elem` args
     then withArgs [] spec
-    else emacsServer computeCand
+    else emacsServer (computeCand False)

@@ -1,6 +1,6 @@
 module AutomatonType where
 
-data Action = Shift Int | Reduce Int | Accept deriving Eq
+data Action = Shift Int | Reduce Int | Accept deriving (Eq, Show)
 
 type ActionTable = [((Int, String), Action)] -- key: (Int,String), value: Action
 type GotoTable   = [((Int, String), Int)]    -- key: (Int,String), value: Int

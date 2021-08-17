@@ -21,20 +21,22 @@ import Data.Typeable
 --                  programTextUptoCursor, programTextAfterCursor
 
 -- | computeCand
-computeCand :: String -> String -> Bool -> IO [EmacsDataItem]
-computeCand programTextUptoCursor programTextAfterCursor isSimpleMode = (do
+computeCand :: Bool -> String -> String -> Bool -> IO [EmacsDataItem]
+computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (do
   {- 1. Lexing  -}                                                                         
-  (line, column, terminalListUptoCursor)  <- lexing_ lexerSpec 1 1 programTextUptoCursor
+  (line, column, terminalListUptoCursor)  <-
+    lexingWithLineColumn lexerSpec 1 1 programTextUptoCursor
 
   {- 2. Parsing -}
-  ((do ast <- parsing parserSpec terminalListUptoCursor
+  ((do ast <- parsing debug parserSpec terminalListUptoCursor
        successfullyParsed)
 
     `catch` \parseError ->
       case parseError :: ParseError Token AST of
         _ ->
           {- 3. Lexing the rest and computing candidates with it -}
-          do (_, _, terminalListAfterCursor) <- lexing_ lexerSpec line column programTextAfterCursor
-             handleParseError isSimpleMode terminalListAfterCursor parseError))
+          do (_, _, terminalListAfterCursor) <-
+               lexingWithLineColumn lexerSpec line column programTextAfterCursor
+             handleParseError debug isSimpleMode terminalListAfterCursor parseError))
 
   `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError
