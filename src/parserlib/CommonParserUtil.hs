@@ -610,7 +610,7 @@ _handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actT
        [ filterCandidates candidateList terminalListAfterCursor | candidateList <- candidateListList ]
   let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
   let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
-  mapM_ (putStrLn . show) rawStrListList
+  debug flag $ show $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
   return $ map Candidate strList
 
 -- | Filter the given candidates with the following texts
