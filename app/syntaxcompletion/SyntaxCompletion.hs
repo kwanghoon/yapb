@@ -20,6 +20,8 @@ import Data.Typeable
 --                  isSimpleMode
 --                  programTextUptoCursor, programTextAfterCursor
 
+maxLevel = 10000
+
 -- | computeCand
 computeCand :: Bool -> String -> String -> Bool -> IO [EmacsDataItem]
 computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (do
@@ -37,6 +39,6 @@ computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (d
           {- 3. Lexing the rest and computing candidates with it -}
           do (_, _, terminalListAfterCursor) <-
                lexingWithLineColumn lexerSpec line column programTextAfterCursor
-             handleParseError debug isSimpleMode terminalListAfterCursor parseError))
+             handleParseError debug maxLevel isSimpleMode terminalListAfterCursor parseError))
 
   `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError
