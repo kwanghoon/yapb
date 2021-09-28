@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..)
-  , lexing, lexingWithLineColumn, parsing, runAutomaton
+  , lexing, lexingWithLineColumn, parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
   , LexError(..), ParseError(..)
   , successfullyParsed, handleLexError, handleParseError) where
@@ -178,9 +178,12 @@ instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show a
 --      ++ prStack stack ++ "\n"
 
 --
-parsing :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-           Bool -> ParserSpec token ast -> [Terminal token] -> IO ast
-parsing flag parserSpec terminalList = do
+parsing flag parserSpec terminalList =
+  parsingHaskell flag parserSpec terminalList Nothing
+  
+parsingHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+           Bool -> ParserSpec token ast -> [Terminal token] -> Maybe token -> IO ast
+parsingHaskell flag parserSpec terminalList haskellOption = do
   -- 1. Save the production rules in the parser spec (Parser.hs).
   writtenBool <- saveProdRules specFileName sSym pSpecList
 
@@ -199,7 +202,7 @@ parsing flag parserSpec terminalList = do
             putStrLn $ "Delete " ++ hashFile
             removeIfExists hashFile
             error $ "Error: Empty automation: please rerun"
-    else do ast <- runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList
+    else do ast <- runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList haskellOption
             -- putStrLn "done." -- It was for the interafce with Java-version RPC calculus interpreter.
             return ast
 
@@ -318,15 +321,20 @@ initState = 0
 
 type ParseFunList token ast = [ParseFun token ast]
 
-runAutomaton :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList =
+  runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList Nothing
+
+runAutomatonHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
   Bool -> Int -> 
   {- static part -}
   ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> 
   {- dynamic part -}
   [Terminal token] ->
+  {- haskell parser specific option -}
+  Maybe token ->
   {- AST -}
   IO ast
-runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList = do
+runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList haskellOption = do
   let initStack = push (StkState initState) emptyStack
   run terminalList initStack
   
@@ -335,24 +343,44 @@ runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList = 
     run terminalList stack = do
       let state = currentState stack
       let terminal = head terminalList
-      let text  = tokenTextFromTerminal terminal
-      let action =
-           case lookupActionTable actionTbl state terminal of
-             Just action -> action
-             Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList)
-                        -- error $ ("Not found in the action table: "
-                        --          ++ terminalToString terminal)
-                        --          ++ " : "
-                        --          ++ show (state, tokenTextFromTerminal terminal)
-                        --          ++ "\n" ++ prStack stack ++ "\n"
-      
+      case lookupActionTable actionTbl state terminal of
+        Just action -> do
+          -- putStrLn $ terminalToString terminal {- debug -}
+          runAction state terminal action terminalList stack
+          
+        Nothing -> do
+          putStrLn $ "lookActionTable failed (1st) with: " ++ show (terminalToString terminal)
+          case haskellOption of
+            Just extraToken -> do
+              let terminal_close_brace = Terminal
+                                          (fromToken extraToken)
+                                            (terminalToLine terminal)
+                                              (terminalToCol terminal)
+                                                (Just extraToken)
+              case lookupActionTable actionTbl state terminal_close_brace of
+                Just action -> do
+                  -- putStrLn $ terminalToString terminal_close_brace {- debug -}
+                  putStrLn $ "lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace
+                  runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack
+                  
+                Nothing -> do
+                  putStrLn $ "lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace
+                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList)
+                -- Nothing -> throw (NotFoundAction terminal_close_brace state stack actionTbl gotoTbl prodRules
+                --                    (terminal_close_brace : terminalList))
+                           
+            Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList)
+
+    -- separated to support the haskell layout rule
+    runAction state terminal action terminalList stack = do      
       debug flag ("\nState " ++ show state)
-      debug flag ("Token " ++ text)
+      debug flag ("Token " ++ tokenTextFromTerminal terminal)
       debug flag ("Stack " ++ prStack stack)
       
       case action of
         Accept -> do
           debug flag "Accept"
+          putStrLn $ terminalToString terminal {- debug -}
           
           case stack !! 1 of
             StkNonterminal (Just ast) _ -> return ast
@@ -361,6 +389,7 @@ runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList = 
         
         Shift toState -> do
           debug flag ("Shift " ++ show toState)
+          putStrLn $ terminalToString terminal {- debug -}
           
           let stack1 = push (StkTerminal (head terminalList)) stack
           let stack2 = push (StkState toState) stack1
@@ -384,10 +413,6 @@ runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList = 
                case lookupGotoTable gotoTbl topState lhs of
                  Just state -> state
                  Nothing -> throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules terminalList)
-                            -- error $ ("Not found in the goto table: ")
-                            --         ++ " : "
-                            --         ++ show (topState,lhs) ++ "\n"
-                            --         ++ prStack stack ++ "\n"
   
           let stack2 = push (StkNonterminal (Just ast) lhs) stack1
           let stack3 = push (StkState toState) stack2
@@ -600,7 +625,9 @@ unwrapParseError flag maxLevel isSimple terminalListAfterCursor (NotFoundGoto st
 arrivedAtTheEndOfSymbol flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules terminalList =
   if length terminalList == 1 then do -- [$]
      _handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules
-  else
+  else do
+     putStrLn $ "length terminalList /= 1 : " ++ show (length terminalList)
+     mapM_ (\t -> putStrLn $ terminalToString $ t) terminalList
      return [SynCompInterface.ParseError (map terminalToString terminalList)]
 
 _handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules = do
@@ -633,7 +660,7 @@ filterCandidates candidates terminalListAfterCursor =
     equal (NonterminalSymbol s1) _                   = False
 
     strCandidate (TerminalSymbol s) = s
-    strCandidate (NonterminalSymbol s) = "..."
+    strCandidate (NonterminalSymbol s) = "..." -- ++ s ++ "..."
 
 -- | Utilities
 showSymbol (TerminalSymbol s) = s
