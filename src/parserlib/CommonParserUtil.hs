@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs #-}
 module CommonParserUtil
-  ( LexerSpec(..), ParserSpec(..)
+  ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..), HandleParseError(..)
   , lexing, lexingWithLineColumn, parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
   , LexError(..), ParseError(..)
@@ -202,7 +202,14 @@ parsingHaskell flag parserSpec terminalList haskellOption = do
             putStrLn $ "Delete " ++ hashFile
             removeIfExists hashFile
             error $ "Error: Empty automation: please rerun"
-    else do ast <- runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList haskellOption
+    else do ast <- runAutomatonHaskell flag
+                     (AutomatonSpec {
+                       am_initState=initState,
+                       am_actionTbl=actionTbl,
+                       am_gotoTbl=gotoTbl,
+                       am_prodRules=prodRules,
+                       am_parseFuns=pFunList })
+                     terminalList haskellOption
             -- putStrLn "done." -- It was for the interafce with Java-version RPC calculus interpreter.
             return ast
 
@@ -317,24 +324,39 @@ revTakeRhs n (_:nt:stack) = revTakeRhs (n-1) stack ++ [nt]
 
 -- Automaton
 
+data AutomatonSpec token ast =
+  AutomatonSpec {
+    am_actionTbl :: ActionTable,
+    am_gotoTbl :: GotoTable,
+    am_prodRules :: ProdRules,
+    am_parseFuns :: ParseFunList token ast,
+    am_initState :: Int
+  }
+
 initState = 0
 
 type ParseFunList token ast = [ParseFun token ast]
 
-runAutomaton flag initState actionTbl gotoTbl prodRules pFunList terminalList =
-  runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList Nothing
+runAutomaton flag amSpec terminalList =
+  runAutomatonHaskell flag amSpec {- initState actionTbl gotoTbl prodRules pFunList-} terminalList Nothing
 
 runAutomatonHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-  Bool -> Int -> 
-  {- static part -}
-  ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> 
+  Bool -> 
+  {- static part ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> -}
+  AutomatonSpec token ast -> 
   {- dynamic part -}
   [Terminal token] ->
   {- haskell parser specific option -}
   Maybe token ->
   {- AST -}
   IO ast
-runAutomatonHaskell flag initState actionTbl gotoTbl prodRules pFunList terminalList haskellOption = do
+runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
+      am_initState=initState,
+      am_actionTbl=actionTbl,
+      am_gotoTbl=gotoTbl,
+      am_prodRules=prodRules,
+      am_parseFuns=pFunList
+   }) terminalList haskellOption = do
   let initStack = push (StkState initState) emptyStack
   run terminalList initStack
   
@@ -440,21 +462,25 @@ data Automaton token ast =
     gotoTbl   :: GotoTable,
     prodRules :: ProdRules
   }
+
+data CompCandidates token ast = CompCandidates {
+    cc_debugFlag :: Bool,
+    cc_searchMaxLevel :: Int,
+    cc_simpleOrNested :: Bool,
+    cc_automaton :: Automaton token ast
+  }
   
 compCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     Bool      -- debug
-     -> Int    -- maximum search depth level
-     -> Bool   -- simple or nested
+     CompCandidates token ast
      -> Int
      -> [Candidate]
      -> Int
-     -> Automaton token ast
      -> Stack token ast
      -> IO [[Candidate]]
 
-compCandidates flag maxLevel isSimple level symbols state automaton stk = do
-  compGammasDfs flag maxLevel isSimple level symbols state automaton stk []
+compCandidates ccOption level symbols state stk = do
+  compGammasDfs ccOption level symbols state stk []
 --  gammas <- compGammasDfs isSimple level symbols state automaton stk []
 --  if isSimple
 --  then return gammas
@@ -462,31 +488,37 @@ compCandidates flag maxLevel isSimple level symbols state automaton stk = do
 
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     Bool
-     -> Int
-     -> Bool
+     CompCandidates token ast
      -> Int
      -> [Candidate]
      -> Int
-     -> Automaton token ast
      -> Stack token ast
      -> [(Int, Stack token ast, String)]
      -> IO [[Candidate]]
 
-compGammasDfs flag maxLevel isSimple level symbols state automaton stk history =
+compGammasDfs ccOption level symbols state stk history =
+  let flag = cc_debugFlag ccOption
+      maxLevel = cc_searchMaxLevel ccOption
+      isSimple = cc_simpleOrNested ccOption
+      automaton = cc_automaton ccOption
+      
+      actionTable = actTbl automaton
+      gotoTable = gotoTbl automaton
+      productionRules = prodRules automaton
+  in
   if level > maxLevel then
     return (if null symbols then [] else [symbols])
   else
   checkCycle flag False level state stk "" history
    (\history -> 
-     case nub [prnum | ((s,lookahead),Reduce prnum) <- actTbl automaton, state==s] of
+     case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s] of
       [] ->
-        case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTbl automaton, state==fromState] of
+        case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
           [] ->
-            if length [True | ((s,lookahead),Accept) <- actTbl automaton, state==s] >= 1
+            if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
             then do 
                    return []
-            else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actTbl automaton, state==s] in
+            else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
                  let len = length cand2 in
                  case cand2 of
                   [] -> return []
@@ -506,7 +538,7 @@ compGammasDfs flag maxLevel isSimple level symbols state automaton stk history =
                                    debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
                                    debug flag $ prlevel level ++ "Stack " ++ prStack stk2
                                    debug flag $ ""
-                                   compGammasDfs flag maxLevel isSimple (level+1) (symbols++[TerminalSymbol terminal]) snext automaton stk2 history1) )
+                                   compGammasDfs ccOption (level+1) (symbols++[TerminalSymbol terminal]) snext stk2 history1) )
                                      (zip cand2 [1..])
                            return $ concat listOfList
           nontermStateList -> do
@@ -528,7 +560,7 @@ compGammasDfs flag maxLevel isSimple level symbols state automaton stk history =
                     debug flag $ prlevel level ++ "Stack " ++ prStack stk2
                     debug flag $ ""
       
-                    compGammasDfs flag maxLevel isSimple (level+1) (symbols++[NonterminalSymbol nonterminal]) snext automaton stk2 history1) )
+                    compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
                       (zip nontermStateList [1..])
             return $ concat listOfList
 
@@ -536,7 +568,7 @@ compGammasDfs flag maxLevel isSimple level symbols state automaton stk history =
         let len = length prnumList
      
         debug flag $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
-        debug flag $ prlevel (level+1) ++ show [ (prodRules automaton) !! prnum | prnum <- prnumList ]
+        debug flag $ prlevel (level+1) ++ show [ productionRules !! prnum | prnum <- prnumList ]
      
         -- let aCandidate = if null symbols then [] else [symbols]
         -- if isSimple
@@ -549,16 +581,25 @@ compGammasDfs flag maxLevel isSimple level symbols state automaton stk history =
                 (\history1 -> do
                    debug flag $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
                    debug flag $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
-                   debug flag $ prlevel level ++ show ((prodRules automaton) !! prnum)
+                   debug flag $ prlevel level ++ show (productionRules !! prnum)
                    debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
                    debug flag $ prlevel level ++ "Stack " ++ prStack stk
                    debug flag $ ""
-                   compGammasDfsForReduce flag maxLevel level isSimple  symbols state automaton stk history1 prnum)) )
+                   compGammasDfsForReduce ccOption level symbols state stk history1 prnum)) )
                  (zip prnumList [1..])
            return $ concat listOfList )
   
-compGammasDfsForReduce flag maxLevel level isSimple  symbols state automaton stk history prnum = 
-  let prodrule   = (prodRules automaton) !! prnum
+compGammasDfsForReduce ccOption level symbols state stk history prnum = 
+  let flag = cc_debugFlag ccOption
+      maxLevel = cc_searchMaxLevel ccOption
+      isSimple = cc_simpleOrNested ccOption
+      automaton = cc_automaton ccOption
+      
+      actionTable = actTbl automaton
+      gotoTable = gotoTbl automaton
+      productionRules = prodRules automaton
+  in
+  let prodrule   = productionRules !! prnum
       lhs = fst prodrule
       rhs = snd prodrule
       
@@ -566,7 +607,8 @@ compGammasDfsForReduce flag maxLevel level isSimple  symbols state automaton stk
   in 
   if ( {- rhsLength == 0 || -} (rhsLength > length symbols) ) == False
   then do
-    debug flag $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT " ++ show rhsLength ++ ">" ++ show (length symbols)
+    debug flag $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT "
+                   ++ show rhsLength ++ ">" ++ show (length symbols)
     debug flag $ prlevel (level+1) ++ show symbols
     debug flag $ prlevel level
     return [] -- Todo: (if null symbols then [] else [symbols])
@@ -574,12 +616,14 @@ compGammasDfsForReduce flag maxLevel level isSimple  symbols state automaton stk
     let stk1 = drop (rhsLength*2) stk
     let topState = currentState stk1
     let toState =
-         case lookupGotoTable (gotoTbl automaton) topState lhs of
+         case lookupGotoTable gotoTable topState lhs of
            Just state -> state
-           Nothing -> error $ "[compGammasDfsForReduce] Must not happen: lhs: " ++ lhs ++ " state: " ++ show topState
+           Nothing -> error $ "[compGammasDfsForReduce] Must not happen: lhs: "
+                                ++ lhs ++ " state: " ++ show topState
     let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
     let stk3 = push (StkState toState) stk2
-    debug flag $ prlevel level ++ "GOTO after REDUCE: " ++ show topState ++ " " ++ lhs ++ " " ++ show toState
+    debug flag $ prlevel level ++ "GOTO after REDUCE: "
+                   ++ show topState ++ " " ++ lhs ++ " " ++ show toState
     debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ "[]"
     debug flag $ prlevel level ++ "Stack " ++ prStack stk3
     debug flag $ ""
@@ -589,7 +633,7 @@ compGammasDfsForReduce flag maxLevel level isSimple  symbols state automaton stk
 
     if isSimple
     then return (if null symbols then [] else [symbols])
-    else do listOfList <- compGammasDfs flag maxLevel isSimple (level+1) [] toState automaton stk3 history
+    else do listOfList <- compGammasDfs ccOption (level+1) [] toState stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
 
 -- | Cycle checking
@@ -616,31 +660,59 @@ successfullyParsed = return [SynCompInterface.SuccessfullyParsed]
 handleLexError :: IO [EmacsDataItem]
 handleLexError = return [SynCompInterface.LexError]
 
--- | handleParseError
-handleParseError :: TokenInterface token => Bool -> Int -> Bool -> [Terminal token] -> ParseError token ast -> IO [EmacsDataItem]
-handleParseError flag maxLevel isSimple terminalListAfterCursor parseError =
-  unwrapParseError flag maxLevel isSimple terminalListAfterCursor parseError
-  
-unwrapParseError flag maxLevel isSimple terminalListAfterCursor (NotFoundAction _ state stk actTbl gotoTbl prodRules terminalList) =
-  arrivedAtTheEndOfSymbol flag maxLevel isSimple terminalListAfterCursor state stk actTbl gotoTbl prodRules terminalList
-unwrapParseError flag maxLevel isSimple terminalListAfterCursor (NotFoundGoto state _ stk actTbl gotoTbl prodRules terminalList) =
-  arrivedAtTheEndOfSymbol flag maxLevel isSimple terminalListAfterCursor state stk actTbl gotoTbl prodRules terminalList
+data HandleParseError token = HandleParseError {
+    debugFlag :: Bool,
+    searchMaxLevel :: Int,
+    simpleOrNested :: Bool,
+    postTerminalList :: [Terminal token],
+    nonterminalToStringMaybe :: Maybe (String->String)
+  }
 
-arrivedAtTheEndOfSymbol flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules terminalList =
+-- | handleParseError
+-- handleParseError :: TokenInterface token => Bool -> Int -> Bool -> [Terminal token] -> ParseError token ast -> IO [EmacsDataItem]
+-- handleParseError flag maxLevel isSimple terminalListAfterCursor parseError =
+--   unwrapParseError flag maxLevel isSimple terminalListAfterCursor parseError
+  
+handleParseError :: TokenInterface token => HandleParseError token -> ParseError token ast -> IO [EmacsDataItem]
+handleParseError hpeOption parseError = unwrapParseError hpeOption parseError
+  
+unwrapParseError hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules terminalList) = do
+    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList
+unwrapParseError hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules terminalList) = do
+    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList
+
+arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList = do
   if length terminalList == 1 then do -- [$]
-     _handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules
+     _handleParseError hpeOption state stk automaton
   else do
      putStrLn $ "length terminalList /= 1 : " ++ show (length terminalList)
      mapM_ (\t -> putStrLn $ terminalToString $ t) terminalList
      return [SynCompInterface.ParseError (map terminalToString terminalList)]
 
-_handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules = do
-  let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-  candidateListList <- compCandidates flag maxLevel isSimple 0 [] state automaton stk
+_handleParseError
+  (hpeOption @ HandleParseError {
+      debugFlag=flag,
+      searchMaxLevel=maxLevel,
+      simpleOrNested=isSimple,
+      postTerminalList=terminalListAfterCursor,
+      nonterminalToStringMaybe=_nonterminalToStringMaybe})
+  state stk automaton = do
+  let ccOption = CompCandidates {
+        cc_debugFlag=flag,
+        cc_searchMaxLevel=maxLevel,
+        cc_simpleOrNested=isSimple,
+        cc_automaton=automaton }
+  candidateListList <- compCandidates ccOption 0 [] state stk
   let colorListList_symbols =
        [ filterCandidates candidateList terminalListAfterCursor
        | candidateList <- candidateListList ]
-  let colorListList_ = map stringfyCandidates colorListList_symbols
+  let convFun =
+        case _nonterminalToStringMaybe of
+          Nothing -> \s -> "..."
+          Just fn -> fn
+  let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols
   let colorListList = map collapseCandidates colorListList_
   let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
   let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
@@ -681,14 +753,14 @@ filterCandidates candidates terminalListAfterCursor =
     equal (TerminalSymbol s1)    (Terminal s2 _ _ _) = s1==s2
     equal (NonterminalSymbol s1) _                   = False
 
-stringfyCandidates :: [EmacsColorCandidate] -> [EmacsColor]
-stringfyCandidates candidates = map stringfyCandidate candidates
+stringfyCandidates :: (String -> String) -> [EmacsColorCandidate] -> [EmacsColor]
+stringfyCandidates convFun candidates = map stringfyCandidate candidates
   where
     stringfyCandidate (GrayCandidate sym line col) = Gray (strCandidate sym) line col
     stringfyCandidate (WhiteCandidate sym) = White (strCandidate sym)
 
     strCandidate (TerminalSymbol s) = s
-    strCandidate (NonterminalSymbol s) = "..." -- ++ s ++ "..."
+    strCandidate (NonterminalSymbol s) = convFun s -- "..." -- ++ s ++ "..."
 
 collapseCandidates [] = []
 collapseCandidates [a] = [a]

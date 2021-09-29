@@ -39,6 +39,13 @@ computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (d
           {- 3. Lexing the rest and computing candidates with it -}
           do (_, _, terminalListAfterCursor) <-
                lexingWithLineColumn lexerSpec line column programTextAfterCursor
-             handleParseError debug maxLevel isSimpleMode terminalListAfterCursor parseError))
+             handleParseError
+               (HandleParseError {
+                   debugFlag=debug,
+                   searchMaxLevel=maxLevel,
+                   simpleOrNested=isSimpleMode,
+                   postTerminalList=terminalListAfterCursor,
+                   nonterminalToStringMaybe=Nothing})
+               parseError))
 
   `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError
