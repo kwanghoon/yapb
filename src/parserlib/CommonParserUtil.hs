@@ -428,7 +428,11 @@ prlevel n = take n (let spaces = ' ' : spaces in spaces)
 data Candidate =     -- Todo: data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol String
   | NonterminalSymbol String
-  deriving (Show,Eq)
+  deriving Eq
+
+instance Show Candidate where
+  showsPrec p (TerminalSymbol s) = (++) $ "Terminal " ++ s
+  showsPrec p (NonterminalSymbol s) = (++) $ "Nonterminal " ++ s
 
 data Automaton token ast =
   Automaton {
@@ -633,34 +637,66 @@ arrivedAtTheEndOfSymbol flag maxLevel isSimple terminalListAfterCursor state stk
 _handleParseError flag maxLevel isSimple terminalListAfterCursor state stk _actTbl _gotoTbl _prodRules = do
   let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
   candidateListList <- compCandidates flag maxLevel isSimple 0 [] state automaton stk
-  let colorListList =
-       [ filterCandidates candidateList terminalListAfterCursor | candidateList <- candidateListList ]
+  let colorListList_symbols =
+       [ filterCandidates candidateList terminalListAfterCursor
+       | candidateList <- candidateListList ]
+  let colorListList_ = map stringfyCandidates colorListList_symbols
+  let colorListList = map collapseCandidates colorListList_
   let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
   let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
-  debug flag $ show $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+  debug flag $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
+  debug flag $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
   return $ map Candidate strList
-
+  
+  where
+    showConcat [] = ""
+    showConcat (s:ss) = s ++ " " ++ showConcat ss
+    
 -- | Filter the given candidates with the following texts
 data EmacsColor =
     Gray  String Line Column -- Overlapping with some in the following text
   | White String             -- Not overlapping
-  deriving Show
+  deriving (Show, Eq)
 
-filterCandidates :: (TokenInterface token) => [Candidate] -> [Terminal token] -> [EmacsColor]
+-- for debugging EmacsColor in terms of symbols before they are stringfied
+data EmacsColorCandidate =
+    GrayCandidate  Candidate Line Column -- Overlapping with some in the following text
+  | WhiteCandidate Candidate             -- Not overlapping
+  deriving Eq
+
+instance Show EmacsColorCandidate where
+  showsPrec p (GrayCandidate c lin col) = (++) $ "Gray " ++ show c
+  showsPrec p (WhiteCandidate c) = (++) $ "White " ++ show c
+
+filterCandidates :: (TokenInterface token) => [Candidate] -> [Terminal token] -> [EmacsColorCandidate]
 filterCandidates candidates terminalListAfterCursor =
   f candidates terminalListAfterCursor []
   where
     f (a:alpha) (b:beta) accm
-      | equal a b       = f alpha beta     (Gray (strCandidate a) (terminalToLine b) (terminalToCol b) : accm)
-      | otherwise       = f alpha (b:beta) (White (strCandidate a) : accm)
+      | equal a b       = f alpha beta     (GrayCandidate a (terminalToLine b) (terminalToCol b) : accm)
+      | otherwise       = f alpha (b:beta) (WhiteCandidate a : accm)
     f [] beta accm      = reverse accm
-    f (a:alpha) [] accm = f alpha [] (White (strCandidate a) : accm)
+    f (a:alpha) [] accm = f alpha [] (WhiteCandidate a : accm)
 
     equal (TerminalSymbol s1)    (Terminal s2 _ _ _) = s1==s2
     equal (NonterminalSymbol s1) _                   = False
 
+stringfyCandidates :: [EmacsColorCandidate] -> [EmacsColor]
+stringfyCandidates candidates = map stringfyCandidate candidates
+  where
+    stringfyCandidate (GrayCandidate sym line col) = Gray (strCandidate sym) line col
+    stringfyCandidate (WhiteCandidate sym) = White (strCandidate sym)
+
     strCandidate (TerminalSymbol s) = s
     strCandidate (NonterminalSymbol s) = "..." -- ++ s ++ "..."
+
+collapseCandidates [] = []
+collapseCandidates [a] = [a]
+collapseCandidates ((Gray "..." l1 c1) : (Gray "..." l2 c2) : cs) =
+  collapseCandidates ((Gray "..." l2 c2) : cs)
+collapseCandidates ((White "...") : (White "...") : cs) =
+  collapseCandidates ((White "...") : cs)    
+collapseCandidates (a:b:cs) = a : collapseCandidates (b:cs)
 
 -- | Utilities
 showSymbol (TerminalSymbol s) = s
