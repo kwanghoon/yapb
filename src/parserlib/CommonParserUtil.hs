@@ -510,14 +510,18 @@ compGammasDfs ccOption level symbols state stk history =
     return (if null symbols then [] else [symbols])
   else
   checkCycle flag False level state stk "" history
-   (\history -> 
+   (\history ->
+     {- 1. Reduce -}
      case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s] of
       [] ->
+        {- 2. Goto table -}
         case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
           [] ->
+            {- 3. Accept -}
             if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
             then do 
                    return []
+            {- 4. Shift -}
             else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
                  let len = length cand2 in
                  case cand2 of
