@@ -402,7 +402,7 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
       case action of
         Accept -> do
           debug flag "Accept"
-          putStrLn $ terminalToString terminal {- debug -}
+          debug flag $ terminalToString terminal {- debug -}
           
           case stack !! 1 of
             StkNonterminal (Just ast) _ -> return ast
@@ -411,7 +411,7 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
         
         Shift toState -> do
           debug flag ("Shift " ++ show toState)
-          putStrLn $ terminalToString terminal {- debug -}
+          debug flag $ terminalToString terminal {- debug -}
           
           let stack1 = push (StkTerminal (head terminalList)) stack
           let stack2 = push (StkState toState) stack1
