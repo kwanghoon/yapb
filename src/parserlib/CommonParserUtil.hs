@@ -1,7 +1,8 @@
 {-# LANGUAGE GADTs #-}
 module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..), HandleParseError(..)
-  , lexing, lexingWithLineColumn, parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
+  , lexing, lexingWithLineColumn, _lexingWithLineColumn
+  , parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
   , LexError(..), ParseError(..)
   , successfullyParsed, handleLexError, handleParseError) where
@@ -89,15 +90,28 @@ lexing lexerspec text = do
 
 lexingWithLineColumn :: TokenInterface token =>
            LexerSpec token -> Line -> Column -> String -> IO (Line, Column, [Terminal token])
-lexingWithLineColumn lexerspec line col [] = do
+lexingWithLineColumn lexerspec line col text =
+  _lexingWithLineColumn False lexerspec line col text
+
+_lexingWithLineColumn debug lexerspec line col [] = do
   let eot = endOfToken lexerspec 
   return (line, col, [Terminal (fromToken eot) line col (Just eot)])
-   
-lexingWithLineColumn lexerspec line col text = do  --Todo: make it tail-recursive!
-  (matchedText, theRestText, maybeTok) <-
+
+_lexingWithLineColumn debug lexerspec line col text = do  --Todo: make it tail-recursive!
+  (matchedText, theRestText, maybeTok, aSpec) <-
     matchLexSpec line col (lexerSpecList lexerspec) text
   let (line_, col_) = moveLineCol line col matchedText
-  (line__, col__, terminalList) <- lexingWithLineColumn lexerspec line_ col_ theRestText
+
+  let str_maybeTok = if isNothing maybeTok then "Nothing" else (fromToken (fromJust maybeTok))
+  
+  when (line==line_ && col==col_) $
+    throw (CommonParserUtil.LexError line col ("length-zero regexp detected? " ++ aSpec))
+  
+  when (debug) $ putStrLn $ show (line_, col_)
+  when (debug) $ putStrLn $ matchedText
+  when (debug) $ putStrLn $ if isNothing maybeTok then "Nothing" else str_maybeTok
+  
+  (line__, col__, terminalList) <- _lexingWithLineColumn debug lexerspec line_ col_ theRestText
   case maybeTok of
     Nothing  -> return (line__, col__, terminalList)
     Just tok -> do
@@ -106,7 +120,7 @@ lexingWithLineColumn lexerspec line col text = do  --Todo: make it tail-recursiv
 
 matchLexSpec :: TokenInterface token =>
                 Line -> Column -> LexerSpecList token -> String
-             -> IO (String, String, Maybe token)
+             -> IO (String, String, Maybe token, String)
 matchLexSpec line col [] text = do
   throw (CommonParserUtil.LexError line col text)
   -- putStr $ "No matching lexer spec at "
@@ -119,7 +133,7 @@ matchLexSpec line col [] text = do
 matchLexSpec line col ((aSpec,tokenBuilder):lexerspec) text = do
   let (pre, matched, post) = text =~ aSpec :: (String,String,String)
   case pre of
-    "" -> return (matched, post, tokenBuilder matched)
+    "" -> return (matched, post, tokenBuilder matched, aSpec)
     _  -> matchLexSpec line col lexerspec text
 
 
