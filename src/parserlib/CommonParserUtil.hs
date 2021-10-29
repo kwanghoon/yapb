@@ -157,39 +157,26 @@ type AutomatonSnapshot token ast =   -- TODO: Refactoring
 data ParseError token ast where
     -- teminal, state, stack actiontbl, gototbl
     NotFoundAction :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      (Terminal token) -> CurrentState -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
+      (Terminal token) -> CurrentState -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] ->
+      Maybe [StkElem token ast] ->
+      ParseError token ast
     
     -- topState, lhs, stack, actiontbl, gototbl,
     NotFoundGoto :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       StateOnStackTop -> LhsSymbol -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] -> ParseError token ast
+      StateOnStackTop -> LhsSymbol -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> [Terminal token] ->
+      Maybe [StkElem token ast] ->
+      ParseError token ast
 
   deriving (Typeable)
 
 instance (Show token, Show ast) => Show (ParseError token ast) where
-  showsPrec p (NotFoundAction terminal state stack _ _ _ _) =
+  showsPrec p (NotFoundAction terminal state stack _ _ _ _ _) =
     (++) "NotFoundAction: " . (++) (show state) . (++) " " . (++) (terminalToString terminal) -- (++) (show $ length stack)
-  showsPrec p (NotFoundGoto topstate lhs stack _ _ _ _) =
+  showsPrec p (NotFoundGoto topstate lhs stack _ _ _ _ _) =
     (++) "NotFoundGoto: " . (++) (show topstate) . (++) " " . (++) lhs -- . (++) (show stack)
 
 instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show ast)
   => Exception (ParseError token ast)
-
--- prParseError (NotFoundAction terminal state stack actiontbl gototbl prodRules terminalList) = do
---   putStrLn $
---     ("Not found in the action table: "
---      ++ terminalToString terminal)
---      ++ " : "
---      ++ show (state, tokenTextFromTerminal terminal)
---      ++ " (" ++ show (length terminalList) ++ ")"
---      ++ "\n" ++ prStack stack ++ "\n"
-     
--- prParseError (NotFoundGoto topState lhs stack actiontbl gototbl prodRules terminalList) = do
---   putStrLn $
---     ("Not found in the goto table: ")
---      ++ " : "
---      ++ show (topState,lhs) ++ "\n"
---      ++ " (" ++ show (length terminalList) ++ ")"
---      ++ prStack stack ++ "\n"
 
 --
 parsing flag parserSpec terminalList =
@@ -372,17 +359,25 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
       am_parseFuns=pFunList
    }) terminalList haskellOption = do
   let initStack = push (StkState initState) emptyStack
-  run terminalList initStack
+  run terminalList initStack Nothing
   
   where
     {- run :: TokenInterface token => [Terminal token] -> Stack token ast -> IO ast -}
-    run terminalList stack = do
+    run terminalList stack _maybeStatus = do
       let state = currentState stack
       let terminal = head terminalList
+      
+      maybeStatus <- 
+            if isNothing _maybeStatus && length terminalList == 1   -- if terminal == "$"
+            then do debug flag $ ""
+                    debug flag $ "Saving: " ++ (prStack stack)
+                    return (Just stack)
+            else do return _maybeStatus
+            
       case lookupActionTable actionTbl state terminal of
         Just action -> do
           -- putStrLn $ terminalToString terminal {- debug -}
-          runAction state terminal action terminalList stack
+          runAction state terminal action terminalList stack maybeStatus
           
         Nothing -> do
           putStrLn $ "lookActionTable failed (1st) with: " ++ show (terminalToString terminal)
@@ -397,18 +392,16 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
                 Just action -> do
                   -- putStrLn $ terminalToString terminal_close_brace {- debug -}
                   putStrLn $ "lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace
-                  runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack
+                  runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack maybeStatus
                   
                 Nothing -> do
                   putStrLn $ "lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace
-                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList)
-                -- Nothing -> throw (NotFoundAction terminal_close_brace state stack actionTbl gotoTbl prodRules
-                --                    (terminal_close_brace : terminalList))
+                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
                            
-            Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList)
+            Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
 
     -- separated to support the haskell layout rule
-    runAction state terminal action terminalList stack = do      
+    runAction state terminal action terminalList stack maybeStatus = do      
       debug flag ("\nState " ++ show state)
       debug flag ("Token " ++ tokenTextFromTerminal terminal)
       debug flag ("Stack " ++ prStack stack)
@@ -429,7 +422,7 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
           
           let stack1 = push (StkTerminal (head terminalList)) stack
           let stack2 = push (StkState toState) stack1
-          run (tail terminalList) stack2
+          run (tail terminalList) stack2 maybeStatus
           
         Reduce n -> do
           debug flag ("Reduce " ++ show n)
@@ -448,11 +441,11 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
           let toState =
                case lookupGotoTable gotoTbl topState lhs of
                  Just state -> state
-                 Nothing -> throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules terminalList)
+                 Nothing -> throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules terminalList maybeStatus)
   
           let stack2 = push (StkNonterminal (Just ast) lhs) stack1
           let stack3 = push (StkState toState) stack2
-          run terminalList stack3
+          run terminalList stack3 maybeStatus
 
 debug :: Bool -> String -> IO ()
 debug flag msg = if flag then putStrLn msg else return ()
@@ -494,11 +487,13 @@ compCandidates
      -> IO [[Candidate]]
 
 compCandidates ccOption level symbols state stk = do
+  let flag = cc_debugFlag ccOption
+  debug flag $ ""
+  debug flag $ "[compCandidates] "
+  debug flag $ " - state: " ++ show state
+  debug flag $ " - stack: " ++ prStack stk
+  debug flag $ ""
   compGammasDfs ccOption level symbols state stk []
---  gammas <- compGammasDfs isSimple level symbols state automaton stk []
---  if isSimple
---  then return gammas
---  else return $ tail $ scanl (++) [] (filter (not . null) gammas)
 
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -523,101 +518,97 @@ compGammasDfs ccOption level symbols state stk history =
   if level > maxLevel then
     return (if null symbols then [] else [symbols])
   else
-  checkCycle flag False level state stk "" history
-   (\history ->
-     {- 1. Reduce -}
-     case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s] of
-      [] ->
-        {- 2. Goto table -}
-        case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
-          [] ->
-            {- 3. Accept -}
-            if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
-            then do 
-                   return []
-            {- 4. Shift -}
-            else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
-                 let len = length cand2 in
-                 case cand2 of
-                  [] -> return []
-               
-                  _  -> do listOfList <-
-                             mapM (\ ((terminal,snext),i)->
-                                let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk  -- Todo: ??? (toToken terminal)
-                                    stk2 = push (StkState snext) stk1
-                                in 
-                                -- checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
-                                -- checkCycle True level state stk terminal history
-                                checkCycle flag True level snext stk2 terminal history
-                             
-                                  (\history1 -> do
-                                   debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                             ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                                   debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
-                                   debug flag $ prlevel level ++ "Stack " ++ prStack stk2
-                                   debug flag $ ""
-                                   compGammasDfs ccOption (level+1) (symbols++[TerminalSymbol terminal]) snext stk2 history1) )
-                                     (zip cand2 [1..])
-                           return $ concat listOfList
-          nontermStateList -> do
-            let len = length nontermStateList
-   
-            listOfList <-
-              mapM (\ ((nonterminal,snext),i) ->
-                 let stk1 = push (StkNonterminal Nothing nonterminal) stk
-                     stk2 = push (StkState snext) stk1
-                 in 
-                 -- checkCycle False level snext stk2 ("GOTO " ++ show snext ++ " " ++ nonterminal) history
-                 -- checkCycle True level state stk nonterminal history
-                 checkCycle flag True level snext stk2 nonterminal history
-              
-                   (\history1 -> do
-                    debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                             ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                    debug flag $ prlevel level ++ "Goto/Shift symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
-                    debug flag $ prlevel level ++ "Stack " ++ prStack stk2
-                    debug flag $ ""
-      
-                    compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
-                      (zip nontermStateList [1..])
-            return $ concat listOfList
+    checkCycle flag False level state stk "" history
+     (\history ->
+       {- 1. Reduce -}
+       case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s, isReducible productionRules prnum stk] of
+         [] -> do
+           {- 2. Goto table -}
+           debug flag $ "no reduce: " ++ show state
+           case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
+             [] -> do
+               debug flag $ "no goto: " ++ show state
+               {- 3. Accept -}
+               if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
+               then do 
+                      return []
+               {- 4. Shift -}
+               else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
+                    let len = length cand2 in
+                    case cand2 of
+                     [] -> do
+                       debug flag $ "no shift: " ++ show state
+                       return []
 
-      prnumList -> do
-        let len = length prnumList
-     
-        debug flag $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
-        debug flag $ prlevel (level+1) ++ show [ productionRules !! prnum | prnum <- prnumList ]
-     
-        -- let aCandidate = if null symbols then [] else [symbols]
-        -- if isSimple
-        -- then return aCandidate
-        -- else do listOfList <-
-        do listOfList <-
-            mapM (\ (prnum,i) -> (
-              -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
-              checkCycle flag True level state stk (show prnum) history
-                (\history1 -> do
-                   debug flag $ prlevel level ++ "State " ++ show state  ++ "[" ++ show i ++ "/" ++ show len ++ "]" 
-                   debug flag $ prlevel level ++ "REDUCE" ++ " prod #" ++ show prnum
-                   debug flag $ prlevel level ++ show (productionRules !! prnum)
-                   debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show symbols
-                   debug flag $ prlevel level ++ "Stack " ++ prStack stk
-                   debug flag $ ""
-                   compGammasDfsForReduce ccOption level symbols state stk history1 prnum)) )
-                 (zip prnumList [1..])
-           return $ concat listOfList )
+                     _  -> do listOfList <-
+                                mapM (\ ((terminal,snext),i)->
+                                   let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk  -- Todo: ??? (toToken terminal)
+                                       stk2 = push (StkState snext) stk1
+                                   in 
+                                   -- checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
+                                   -- checkCycle True level state stk terminal history
+                                   checkCycle flag True level snext stk2 terminal history
+
+                                     (\history1 -> do
+                                      debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                                ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
+                                      debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
+                                      debug flag $ prlevel level ++ "Stack " ++ prStack stk2
+                                      debug flag $ ""
+                                      compGammasDfs ccOption (level+1) (symbols++[TerminalSymbol terminal]) snext stk2 history1) )
+                                        (zip cand2 [1..])
+                              return $ concat listOfList
+             nontermStateList -> do
+               let len = length nontermStateList
+
+               listOfList <-
+                 mapM (\ ((nonterminal,snext),i) ->
+                    let stk1 = push (StkNonterminal Nothing nonterminal) stk
+                        stk2 = push (StkState snext) stk1
+                    in 
+                    -- checkCycle False level snext stk2 ("GOTO " ++ show snext ++ " " ++ nonterminal) history
+                    -- checkCycle True level state stk nonterminal history
+                    checkCycle flag True level snext stk2 nonterminal history
+
+                      (\history1 -> do
+                       debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
+                                ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
+                       debug flag $ prlevel level ++ "Goto/Shift symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
+                       debug flag $ prlevel level ++ "Stack " ++ prStack stk2
+                       debug flag $ ""
+
+                       compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
+                         (zip nontermStateList [1..])
+               return $ concat listOfList
+
+         prnumList -> do
+           let len = length prnumList
+
+           debug flag $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
+           debug flag $ prlevel (level+1) ++ show [ productionRules !! prnum | prnum <- prnumList ]
+
+           do listOfList <-
+               mapM (\ (prnum,i) -> (
+                 -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
+                 checkCycle flag True level state stk (show prnum) history
+                   (\history1 -> do
+                      debug flag $ prlevel level ++ "REDUCE"
+                                      ++ " [" ++ show i ++ "/" ++ show len ++ "]"
+                      debug flag $ prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)
+                      debug flag $ prlevel level ++ " - State " ++ show state  
+                      debug flag $ prlevel level ++ " - Stack " ++ prStack stk
+                      debug flag $ prlevel level ++ " - Symbols: " ++ show symbols
+                      debug flag $ ""
+                      compGammasDfsForReduce ccOption level symbols state stk history1 prnum)) )
+                    (zip prnumList [1..])
+              return $ concat listOfList )
   
 compGammasDfsForReduce ccOption level symbols state stk history prnum = 
   let flag = cc_debugFlag ccOption
-      maxLevel = cc_searchMaxLevel ccOption
       isSimple = cc_simpleOrNested ccOption
       automaton = cc_automaton ccOption
-      
-      actionTable = actTbl automaton
-      gotoTable = gotoTbl automaton
-      productionRules = prodRules automaton
-  in
-  let prodrule   = productionRules !! prnum
+
+      prodrule   = (prodRules automaton) !! prnum
       lhs = fst prodrule
       rhs = snd prodrule
       
@@ -627,32 +618,58 @@ compGammasDfsForReduce ccOption level symbols state stk history prnum =
   then do
     debug flag $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT "
                    ++ show rhsLength ++ ">" ++ show (length symbols)
-    debug flag $ prlevel (level+1) ++ show symbols
-    debug flag $ prlevel level
+    debug flag $ "rhs: " ++ show rhs
+    debug flag $ "symbols: " ++ show symbols
     return [] -- Todo: (if null symbols then [] else [symbols])
-  else do
+    
+  else do   -- reducible
     let stk1 = drop (rhsLength*2) stk
     let topState = currentState stk1
     let toState =
-         case lookupGotoTable gotoTable topState lhs of
+         case lookupGotoTable (gotoTbl automaton) topState lhs of
            Just state -> state
            Nothing -> error $ "[compGammasDfsForReduce] Must not happen: lhs: "
                                 ++ lhs ++ " state: " ++ show topState
     let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
     let stk3 = push (StkState toState) stk2
-    debug flag $ prlevel level ++ "GOTO after REDUCE: "
+    debug flag $ prlevel level ++ "GOTO : "
                    ++ show topState ++ " " ++ lhs ++ " " ++ show toState
-    debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ "[]"
     debug flag $ prlevel level ++ "Stack " ++ prStack stk3
     debug flag $ ""
 
     debug flag $ prlevel level ++ "Found a gamma: " ++ show symbols
     debug flag $ ""
 
-    if isSimple
+    if isSimple -- Todo: loosley simple mode:  +  && not (null symbols)
     then return (if null symbols then [] else [symbols])
     else do listOfList <- compGammasDfs ccOption (level+1) [] toState stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
+
+--
+isReducible productionRules prnum stk =
+  let 
+      prodrule   = productionRules !! prnum
+      rhs = snd prodrule
+      
+      rhsLength = length rhs
+      
+      prefix_stk = take (rhsLength*2) stk
+      reducible =
+        isMatched rhs
+          (reverse [elem | (i,elem) <- zip [1..] prefix_stk, i `mod` 2 == 0])
+  in
+    reducible
+  
+isMatched :: TokenInterface token => [String] -> [StkElem token ast] -> Bool
+isMatched [] [] = True
+isMatched (s:rhs) (StkTerminal terminal:stk) =  
+  let maybeToken = terminalToMaybeToken terminal in
+    (  isJust maybeToken && s == fromToken (fromJust maybeToken) -- Todo: A bit hard-coded!!
+    || isNothing maybeToken && s == terminalToSymbol terminal)
+    && isMatched rhs stk
+isMatched (s:rhs) (StkNonterminal _ nonterminal:stk) =
+  s == nonterminal && isMatched rhs stk
+isMatched _ _ = False  
 
 -- | Cycle checking
 noCycleCheck :: Bool
@@ -693,20 +710,34 @@ data HandleParseError token = HandleParseError {
   
 handleParseError :: TokenInterface token => HandleParseError token -> ParseError token ast -> IO [EmacsDataItem]
 handleParseError hpeOption parseError = unwrapParseError hpeOption parseError
-  
-unwrapParseError hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules terminalList) = do
-    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList
-unwrapParseError hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules terminalList) = do
-    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList
 
-arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList = do
-  if length terminalList == 1 then do -- [$]
-     _handleParseError hpeOption state stk automaton
-  else do
-     putStrLn $ "length terminalList /= 1 : " ++ show (length terminalList)
-     mapM_ (\t -> putStrLn $ terminalToString $ t) terminalList
+  --
+unwrapParseError hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules terminalList maybeStatus) = do
+    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList maybeStatus
+    
+unwrapParseError hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules terminalList maybeStatus) = do
+    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+    arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList maybeStatus
+
+--
+arrivedAtTheEndOfSymbol hpeOption state stk automaton [_] maybeStatus =  -- [$]
+  case maybeStatus of
+    Nothing -> do
+      debug (debugFlag hpeOption) $ "No saved stack"
+      _handleParseError hpeOption state stk automaton
+    Just savedStk ->
+      let savedStk = fromJust maybeStatus
+          savedState = currentState savedStk
+      in do
+          debug (debugFlag hpeOption) $ "Restored stack"
+          debug (debugFlag hpeOption) $ " - state: " ++ show savedState
+          debug (debugFlag hpeOption) $ " - stack: " ++ prStack savedStk
+          _handleParseError hpeOption savedState savedStk automaton
+              
+arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList maybeStatus = do
+     -- debug (debugFlag hpeOption) $ "length terminalList /= 1 : " ++ show (length terminalList)
+     -- debug (debugFlag hpeOption) $ map (\t -> terminalToString $ t) terminalList
      return [SynCompInterface.ParseError (map terminalToString terminalList)]
 
 _handleParseError
