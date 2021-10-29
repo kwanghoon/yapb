@@ -59,8 +59,8 @@ spec = hspec $ do
     
     it ("[test2.sml:simple] " ++ test2_sml) $ do
       results <- computeCand False test2_sml "" True
-      -- results `shouldBe` [Candidate "white )"]  -- for loosely simple mode
-      results `shouldBe` []
+      results `shouldBe` [Candidate "white )"]  -- for loosely simple mode
+      -- results `shouldBe` []  -- for strictly simple mode
 
     it ("[test2.sml:nested] " ++ test2_sml) $ do
       results <- computeCand False test2_sml "" False
@@ -71,7 +71,8 @@ spec = hspec $ do
     
     it ("[test3.sml:simple] " ++ test3_sml) $ do
       results <- computeCand False test3_sml "" True
-      results `shouldBe` []
+      results `shouldBe` [Candidate "white in white ... white end"]  -- for loosely simple mode
+      -- results `shouldBe` []  -- for strictly simple mode
 
     it ("[test3.sml:nested] " ++ test3_sml) $ do
       results <- computeCand False test3_sml "" False

@@ -515,8 +515,11 @@ compGammasDfs ccOption level symbols state stk history =
       gotoTable = gotoTbl automaton
       productionRules = prodRules automaton
   in
-  if level > maxLevel then
-    return (if null symbols then [] else [symbols])
+  if level > maxLevel then do
+    let result_symbols = if null symbols then [] else [symbols]
+    debug flag $ prlevel level ++ "maxlevel reached."
+    debug flag $ prlevel level ++ " - " ++ show result_symbols
+    return result_symbols
   else
     checkCycle flag False level state stk "" history
      (\history ->
@@ -524,20 +527,21 @@ compGammasDfs ccOption level symbols state stk history =
        case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s, isReducible productionRules prnum stk] of
          [] -> do
            {- 2. Goto table -}
-           debug flag $ "no reduce: " ++ show state
+           debug flag $ prlevel level ++ "no reduce: " ++ show state
            case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
              [] -> do
-               debug flag $ "no goto: " ++ show state
+               debug flag $ prlevel level ++ "no goto: " ++ show state
                {- 3. Accept -}
                if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
-               then do 
+               then do
+                      debug flag $ prlevel level ++ "accept: " ++ show state
                       return []
                {- 4. Shift -}
                else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
                     let len = length cand2 in
                     case cand2 of
                      [] -> do
-                       debug flag $ "no shift: " ++ show state
+                       debug flag $ prlevel level ++ "no shift: " ++ show state
                        return []
 
                      _  -> do listOfList <-
@@ -552,8 +556,8 @@ compGammasDfs ccOption level symbols state stk history =
                                      (\history1 -> do
                                       debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
                                                 ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                                      debug flag $ prlevel level ++ "Goto/Shift symbols: " ++ show (symbols++[TerminalSymbol terminal])
                                       debug flag $ prlevel level ++ "Stack " ++ prStack stk2
+                                      debug flag $ prlevel level ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
                                       debug flag $ ""
                                       compGammasDfs ccOption (level+1) (symbols++[TerminalSymbol terminal]) snext stk2 history1) )
                                         (zip cand2 [1..])
@@ -573,8 +577,8 @@ compGammasDfs ccOption level symbols state stk history =
                       (\history1 -> do
                        debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
                                 ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                       debug flag $ prlevel level ++ "Goto/Shift symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
                        debug flag $ prlevel level ++ "Stack " ++ prStack stk2
+                       debug flag $ prlevel level ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
                        debug flag $ ""
 
                        compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
@@ -632,15 +636,15 @@ compGammasDfsForReduce ccOption level symbols state stk history prnum =
                                 ++ lhs ++ " state: " ++ show topState
     let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
     let stk3 = push (StkState toState) stk2
-    debug flag $ prlevel level ++ "GOTO : "
+    debug flag $ prlevel level ++ " - GOTO : "
                    ++ show topState ++ " " ++ lhs ++ " " ++ show toState
-    debug flag $ prlevel level ++ "Stack " ++ prStack stk3
+    debug flag $ prlevel level ++ " --- Stack " ++ prStack stk3
     debug flag $ ""
 
     debug flag $ prlevel level ++ "Found a gamma: " ++ show symbols
     debug flag $ ""
 
-    if isSimple -- Todo: loosley simple mode:  +  && not (null symbols)
+    if isSimple  && not (null symbols) -- Todo: loosley simple mode:  +  && not (null symbols)
     then return (if null symbols then [] else [symbols])
     else do listOfList <- compGammasDfs ccOption (level+1) [] toState stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
