@@ -545,20 +545,18 @@ compGammasDfs ccOption level symbols state stk history =
                        return []
 
                      _  -> do listOfList <-
-                                mapM (\ ((terminal,snext),i)->
+                                mapM (\ ((terminal,snext),i)-> do
                                    let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk  -- Todo: ??? (toToken terminal)
-                                       stk2 = push (StkState snext) stk1
-                                   in 
-                                   -- checkCycle False level snext stk2 ("SHIFT " ++ show snext ++ " " ++ terminal) history
-                                   -- checkCycle True level state stk terminal history
-                                   checkCycle flag True level snext stk2 terminal history
+                                   let stk2 = push (StkState snext) stk1
 
-                                     (\history1 -> do
-                                      debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                                ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                                      debug flag $ prlevel level ++ "Stack " ++ prStack stk2
-                                      debug flag $ prlevel level ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
-                                      debug flag $ ""
+                                   debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                             ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
+                                   debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
+                                   debug flag $ prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
+                                   debug flag $ ""
+
+                                   checkCycle flag True level snext stk2 terminal history
+                                     (\history1 -> 
                                       compGammasDfs ccOption (level+1) (symbols++[TerminalSymbol terminal]) snext stk2 history1) )
                                         (zip cand2 [1..])
                               return $ concat listOfList
@@ -577,8 +575,8 @@ compGammasDfs ccOption level symbols state stk history =
                       (\history1 -> do
                        debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
                                 ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                       debug flag $ prlevel level ++ "Stack " ++ prStack stk2
-                       debug flag $ prlevel level ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
+                       debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
+                       debug flag $ prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
                        debug flag $ ""
 
                        compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
@@ -683,8 +681,8 @@ checkCycle debugflag flag level state stk action history cont =
   if flag && (state,stk,action) `elem` history
   then do
     debug debugflag $ prlevel level ++ "CYCLE is detected !!"
-    debug debugflag $ prlevel level ++ show state ++ " " ++ action
-    debug debugflag $ prlevel level ++ prStack stk
+    debug debugflag $ prlevel level ++ " - " ++ show state ++ " " ++ action
+    debug debugflag $ prlevel level ++ " - " ++ prStack stk
     debug debugflag $ ""
     return []
   else cont ( (state,stk,action) : history )
