@@ -474,9 +474,20 @@ data CompCandidates token ast = CompCandidates {
     cc_debugFlag :: Bool,
     cc_searchMaxLevel :: Int,
     cc_simpleOrNested :: Bool,
-    cc_automaton :: Automaton token ast
+    cc_automaton :: Automaton token ast,
+    cc_actionState :: ActionState
   }
-  
+
+data ActionState =
+    AS_InitReduces   -- Reduce^*
+  | AS_GotoOrShift   -- (Goto | Shift)
+  | AS_FinalReduce   -- Reduce
+
+initActionState = AS_InitReduces
+
+isFinalReduce AS_FinalReduce = True
+isFinalReduce _              = False
+
 compCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
      CompCandidates token ast
@@ -493,8 +504,9 @@ compCandidates ccOption level symbols state stk = do
   debug flag $ " - state: " ++ show state
   debug flag $ " - stack: " ++ prStack stk
   debug flag $ ""
-  compGammasDfs ccOption level symbols state stk []
-
+  -- compGammasDfs ccOption level symbols state stk []
+  repReduce ccOption level symbols state stk
+  
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
      CompCandidates token ast
@@ -647,6 +659,164 @@ compGammasDfsForReduce ccOption level symbols state stk history prnum =
     else do listOfList <- compGammasDfs ccOption (level+1) [] toState stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
 
+--------------------------------------------------------------------------------
+-- A new search algorithm
+--------------------------------------------------------------------------------
+repReduce
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+
+repReduce ccOption level symbols state stk =
+  let flag            = cc_debugFlag ccOption
+      maxLevel        = cc_searchMaxLevel ccOption
+      isSimple        = cc_simpleOrNested ccOption
+      automaton       = cc_automaton ccOption
+      actionState     = cc_actionState ccOption
+      
+      actionTable     = actTbl automaton
+      gotoTable       = gotoTbl automaton
+      productionRules = prodRules automaton
+  in do listOfList1 <-
+          if isFinalReduce (cc_actionState ccOption)
+          then return []
+          else repGotoOrShift (ccOption {cc_actionState = AS_GotoOrShift}) level symbols state stk
+
+        case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
+                        , state==s
+                        , isReducible productionRules prnum stk] of
+          []        -> return listOfList1
+
+          prnumList -> do listOfList2 <-
+                            mapM (\ (prnum, i) ->
+                                    simulReduce ccOption level symbols prnum state stk)
+                              (zip prnumList [1..])
+                          return $ listOfList1 ++ concat listOfList2
+
+simulReduce ccOption level symbols prnum state stk =
+  let flag      = cc_debugFlag ccOption
+      isSimple  = cc_simpleOrNested ccOption
+      automaton = cc_automaton ccOption
+      actionState     = cc_actionState ccOption
+
+      productionRules = prodRules automaton
+      prodrule  = (prodRules automaton) !! prnum
+      lhs       = fst prodrule
+      rhs       = snd prodrule
+      
+      rhsLength = length rhs
+  in do
+    debug flag $ prlevel level ++ "REDUCE"
+    debug flag $ prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)
+    debug flag $ prlevel level ++ " - State " ++ show state  
+    debug flag $ prlevel level ++ " - Stack " ++ prStack stk
+    debug flag $ prlevel level ++ " - Symbols: " ++ show symbols
+    debug flag $ ""
+    
+    if (rhsLength > length symbols) == False
+    then return []
+    else do let stk1 = drop (rhsLength*2) stk
+            let topState = currentState stk1
+            let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+                  Just state -> state
+                  Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                     ++ lhs ++ " state: " ++ show topState
+            let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+            let stk3 = push (StkState toState) stk2
+            if isSimple && not (null symbols) -- reduces until symbols are found
+              then return (if null symbols
+                           then []
+                           else [symbols])
+              else if isFinalReduce actionState  -- isSimple: OK; not isSimple: ???
+                   then return []    
+                   else do listOfList <- repReduce ccOption (level+1) [] toState stk3
+                           return (if null symbols
+                                   then listOfList
+                                   else (symbols : map (symbols ++) listOfList))
+
+
+simulGoto ccOption level symbols state stk =
+  let flag            = cc_debugFlag ccOption
+      maxLevel        = cc_searchMaxLevel ccOption
+      isSimple        = cc_simpleOrNested ccOption
+      automaton       = cc_automaton ccOption
+      
+      actionTable     = actTbl automaton
+      gotoTable       = gotoTbl automaton
+      productionRules = prodRules automaton
+  in 
+    case nub [ (nonterminal,toState)
+             | ((fromState,nonterminal),toState) <- gotoTable
+             , state==fromState ] of
+      [] -> return []
+      nontermStateList ->
+        do
+          let len = length nontermStateList
+          listOfList <-
+            mapM (\ ((nonterminal,snext),i) -> do
+                      let stk1 = push (StkNonterminal Nothing nonterminal) stk
+                      let stk2 = push (StkState snext) stk1
+                          
+                      debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
+                                     ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
+                      debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
+                      debug flag $ prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
+                      debug flag $ ""
+                          
+                      repGotoOrShift 
+                        ccOption (level+1)
+                          (symbols++[NonterminalSymbol nonterminal])
+                            snext stk2)
+              (zip nontermStateList [1..])
+          return $ concat listOfList
+
+simulShift ccOption level symbols state stk =
+  let flag            = cc_debugFlag ccOption
+      maxLevel        = cc_searchMaxLevel ccOption
+      isSimple        = cc_simpleOrNested ccOption
+      automaton       = cc_automaton ccOption
+      
+      actionTable     = actTbl automaton
+      gotoTable       = gotoTbl automaton
+      productionRules = prodRules automaton
+  in
+  let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s]
+      len = length cand2
+  in
+  case cand2 of
+   [] -> return []
+
+   _  -> do listOfList <-
+              mapM (\ ((terminal,snext),i)-> do
+                        let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk
+                        let stk2 = push (StkState snext) stk1
+                        
+                        debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                  ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
+                        debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
+                        debug flag $ prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
+                        debug flag $ ""
+                        
+                        repGotoOrShift
+                          ccOption (level+1)
+                            (symbols++[TerminalSymbol terminal])
+                              snext stk2)
+                (zip cand2 [1..])
+            return $ concat listOfList
+
+repGotoOrShift
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+
+repGotoOrShift ccOption level symbols state stk =
+  do listOfList1 <- repReduce (ccOption{cc_actionState=AS_FinalReduce}) level symbols state stk
+     if null listOfList1
+       then do listOfList2 <- simulGoto ccOption level symbols state stk
+               if null listOfList2
+                 then do listOfList3 <- simulShift ccOption level symbols state stk
+                         return listOfList3
+                 else return listOfList2
+       else return listOfList1
+            
 --
 isReducible productionRules prnum stk =
   let 
@@ -754,7 +924,8 @@ _handleParseError
         cc_debugFlag=flag,
         cc_searchMaxLevel=maxLevel,
         cc_simpleOrNested=isSimple,
-        cc_automaton=automaton }
+        cc_automaton=automaton,
+        cc_actionState = initActionState }
   candidateListList <- compCandidates ccOption 0 [] state stk
   let colorListList_symbols =
        [ filterCandidates candidateList terminalListAfterCursor
