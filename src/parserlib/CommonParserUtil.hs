@@ -484,7 +484,7 @@ data Automaton token ast =
 
 data CompCandidates token ast = CompCandidates {
     cc_debugFlag :: Bool,
-    cc_searchMaxLevel :: Int,  -- for old algorithm
+    cc_printLevel :: Int,  
     
     cc_r_level :: Int,         -- for new algorithm
     cc_gs_level :: Int,        --
@@ -511,7 +511,7 @@ compCandidates ccOption level symbols state stk = do
   debug flag $ " - stack: " ++ prStack stk
   debug flag $ ""
   -- compGammasDfs ccOption level symbols state stk []
-  extendedCompCandidates ccOption level symbols state stk
+  extendedCompCandidates ccOption symbols state stk
   
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -525,7 +525,7 @@ compGammasDfs
 
 compGammasDfs ccOption level symbols state stk history =
   let flag = cc_debugFlag ccOption
-      maxLevel = cc_searchMaxLevel ccOption
+      maxLevel = cc_printLevel ccOption
       isSimple = cc_simpleOrNested ccOption
       automaton = cc_automaton ccOption
       
@@ -702,11 +702,12 @@ gs_level (SS_FinalReduce r gs) = gs
 --
 extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
-extendedCompCandidates ccOption level symbols state stk = do
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+extendedCompCandidates ccOption symbols state stk = do
+  let level = 0
   maybeConfig <- readConfig
   case maybeConfig of
-    Nothing -> repReduce ccOption level symbols state stk
+    Nothing -> repReduce ccOption symbols state stk
     Just config ->
       let r_level  = config_R_LEVEL config
           gs_level = config_GS_LEVEL config
@@ -726,15 +727,16 @@ extendedCompCandidates ccOption level symbols state stk = do
             debug debugFlag $ "(Max) gs level: " ++ show gs_level
             debug debugFlag $ ""
             
-            repReduce ccOption' level symbols state stk
+            repReduce ccOption' symbols state stk
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
 
-repReduce ccOption level symbols state stk =
+repReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      maxLevel        = cc_searchMaxLevel ccOption
+      -- maxLevel        = cc_searchMaxLevel ccOption
+      level           = cc_printLevel
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       searchState     = cc_searchState ccOption
@@ -755,13 +757,13 @@ repReduce ccOption level symbols state stk =
                                           SS_GotoOrShift
                                             (r_level (cc_searchState ccOption))
                                             (gs_level (cc_searchState ccOption)) })
-                                 level symbols state stk
+                                 symbols state stk
 
            prnumList -> do let len = length prnumList
 
                            listOfList1 <-
                              mapM (\ (prnum, i) ->
-                                     simulReduce ccOption level symbols prnum len i state stk)
+                                     simulReduce ccOption symbols prnum len i state stk)
                                (zip prnumList [1..])
 
                            listOfList2 <- if isFinalReduce (cc_searchState ccOption)
@@ -772,15 +774,16 @@ repReduce ccOption level symbols state stk =
                                                               SS_GotoOrShift
                                                                 (r_level (cc_searchState ccOption))
                                                                 (gs_level (cc_searchState ccOption)) })
-                                                   level symbols state stk
+                                                   symbols state stk
 
                            return $ listOfList2 ++ concat listOfList1
 
-simulReduce ccOption level symbols prnum len i state stk =
+simulReduce ccOption symbols prnum len i state stk =
   let flag      = cc_debugFlag ccOption
       isSimple  = cc_simpleOrNested ccOption
       automaton = cc_automaton ccOption
       searchState     = cc_searchState ccOption
+      level = cc_printLevel ccOption
 
       productionRules = prodRules automaton
       prodrule  = (prodRules automaton) !! prnum
@@ -822,7 +825,7 @@ simulReduce ccOption level symbols prnum len i state stk =
                            then []
                            else [symbols])
                  else if isInitReduces searchState then -- reduces until symbols are found
-                   do listOfList <- repReduce ccOption (level+1) [] toState stk3
+                   do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
 
                       return (if null symbols
                               then listOfList
@@ -836,11 +839,12 @@ simulReduce ccOption level symbols prnum len i state stk =
                       listOfList <-
                          if r_level (cc_searchState ccOption) - 1 > 0 then
                            repReduce
-                             (ccOption{cc_searchState=
+                             (ccOption{ cc_searchState=
                                          SS_InitReduces
                                            (r_level (cc_searchState ccOption) - 1)
-                                           (gs_level (cc_searchState ccOption))})
-                                (level+1) [] toState stk3
+                                           (gs_level (cc_searchState ccOption))
+                                      , cc_printLevel=level+1})
+                                [] toState stk3
                          else return []
 
                       return (if null symbols
@@ -849,7 +853,7 @@ simulReduce ccOption level symbols prnum len i state stk =
 
                  else if isInitReduces searchState then
                    do
-                      listOfList <- repReduce ccOption (level+1) [] toState stk3
+                      listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
 
                       return (if null symbols
                               then listOfList
@@ -859,9 +863,10 @@ simulReduce ccOption level symbols prnum len i state stk =
                    do error $ "simulReduce: Unexpected search state" ++ show searchState
 
 
-simulGoto ccOption level symbols state stk =
+simulGoto ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      maxLevel        = cc_searchMaxLevel ccOption
+      -- maxLevel        = cc_searchMaxLevel ccOption
+      level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       
@@ -891,16 +896,17 @@ simulGoto ccOption level symbols state stk =
                           debug flag $ ""
 
                           repGotoOrShift 
-                            ccOption (level+1)
+                            ccOption{cc_printLevel=level+1}
                               (symbols++[NonterminalSymbol nonterminal])
                                 snext stk2)
                   (zip nontermStateList [1..])
 
               return $ concat listOfList
 
-simulShift ccOption level symbols state stk =
+simulShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      maxLevel        = cc_searchMaxLevel ccOption
+      -- maxLevel        = cc_searchMaxLevel ccOption
+      level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       
@@ -929,7 +935,7 @@ simulShift ccOption level symbols state stk =
                               debug flag $ ""
 
                               repGotoOrShift
-                                ccOption (level+1)
+                                ccOption{cc_printLevel=level+1}
                                   (symbols++[TerminalSymbol terminal])
                                     snext stk2)
                       (zip cand2 [1..])
@@ -938,11 +944,12 @@ simulShift ccOption level symbols state stk =
 
 repGotoOrShift
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
 
-repGotoOrShift ccOption level symbols state stk =
+repGotoOrShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      maxLevel        = cc_searchMaxLevel ccOption
+      -- maxLevel        = cc_searchMaxLevel ccOption
+      level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       
@@ -962,7 +969,7 @@ repGotoOrShift ccOption level symbols state stk =
                                              SS_FinalReduce
                                                (r_level (cc_searchState ccOption))
                                                (gs_level (cc_searchState ccOption))})
-                                   level symbols state stk
+                                   symbols state stk
 
                 if null listOfList1
                   then
@@ -972,9 +979,9 @@ repGotoOrShift ccOption level symbols state stk =
                                                (r_level (cc_searchState ccOption))
                                                (gs_level (cc_searchState ccOption) - 1)}
                          in
-                         do listOfList2 <- simulGoto ccOption' level symbols state stk
+                         do listOfList2 <- simulGoto ccOption' symbols state stk
                             if null listOfList2
-                              then do listOfList3 <- simulShift ccOption' level symbols state stk
+                              then do listOfList3 <- simulShift ccOption' symbols state stk
                                       return listOfList3
 
                               else do return listOfList2
@@ -1095,7 +1102,7 @@ _handleParseError
   state stk automaton = do
   let ccOption = CompCandidates {
         cc_debugFlag=flag,
-        cc_searchMaxLevel=maxLevel,
+        cc_printLevel=maxLevel,
         cc_simpleOrNested=isSimple,
         cc_automaton=automaton,
         cc_searchState = initSearchState init_r_level init_gs_level,
