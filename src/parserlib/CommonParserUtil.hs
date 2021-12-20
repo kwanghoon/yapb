@@ -27,10 +27,13 @@ import Data.Maybe
 
 import SynCompInterface
 
+import Config
+
 import Prelude hiding (catch)
 import System.Directory
 import Control.Exception
 import System.IO.Error hiding (catch)
+
 
 -- Lexer Specification
 type RegExpStr    = String
@@ -339,9 +342,18 @@ initState = 0
 type ParseFunList token ast = [ParseFun token ast]
 
 runAutomaton flag amSpec terminalList =
-  runAutomatonHaskell flag amSpec {- initState actionTbl gotoTbl prodRules pFunList-} terminalList Nothing
+  runAutomatonHaskell flag amSpec terminalList Nothing
 
-runAutomatonHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+runAutomatonHaskell flag amSpec terminalList haskellOption =
+  do maybeConfig <- readConfig
+  
+     flag <- case maybeConfig of
+               Nothing -> return flag
+               Just config -> return $ config_DEBUG config
+               
+     runYapbAutomaton flag amSpec terminalList Nothing
+  
+runYapbAutomaton :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
   Bool -> 
   {- static part ActionTable -> GotoTable -> ProdRules -> ParseFunList token ast -> -}
   AutomatonSpec token ast -> 
@@ -351,7 +363,7 @@ runAutomatonHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show
   Maybe token ->
   {- AST -}
   IO ast
-runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
+runYapbAutomaton flag (rm_spec @ AutomatonSpec {
       am_initState=initState,
       am_actionTbl=actionTbl,
       am_gotoTbl=gotoTbl,
@@ -380,7 +392,7 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
           runAction state terminal action terminalList stack maybeStatus
           
         Nothing -> do
-          putStrLn $ "lookActionTable failed (1st) with: " ++ show (terminalToString terminal)
+          debug flag $ "lookActionTable failed (1st) with: " ++ show (terminalToString terminal)
           case haskellOption of
             Just extraToken -> do
               let terminal_close_brace = Terminal
@@ -391,11 +403,11 @@ runAutomatonHaskell flag (rm_spec @ AutomatonSpec {
               case lookupActionTable actionTbl state terminal_close_brace of
                 Just action -> do
                   -- putStrLn $ terminalToString terminal_close_brace {- debug -}
-                  putStrLn $ "lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace
+                  debug flag $ "lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace
                   runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack maybeStatus
                   
                 Nothing -> do
-                  putStrLn $ "lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace
+                  debug flag $ "lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace
                   throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
                            
             Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
@@ -472,7 +484,11 @@ data Automaton token ast =
 
 data CompCandidates token ast = CompCandidates {
     cc_debugFlag :: Bool,
-    cc_searchMaxLevel :: Int,
+    cc_searchMaxLevel :: Int,  -- for old algorithm
+    
+    cc_r_level :: Int,         -- for new algorithm
+    cc_gs_level :: Int,        --
+    
     cc_simpleOrNested :: Bool,
     cc_automaton :: Automaton token ast,
     cc_searchState :: SearchState
@@ -495,7 +511,7 @@ compCandidates ccOption level symbols state stk = do
   debug flag $ " - stack: " ++ prStack stk
   debug flag $ ""
   -- compGammasDfs ccOption level symbols state stk []
-  repReduce ccOption level symbols state stk
+  extendedCompCandidates ccOption level symbols state stk
   
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -662,10 +678,10 @@ data SearchState =
   deriving Show
 
 init_r_level :: R_Level
-init_r_level = 3
+init_r_level = 1
 
 init_gs_level :: GS_Level
-init_gs_level = 10
+init_gs_level = 5
 
 initSearchState r gs = SS_InitReduces r gs
 
@@ -684,6 +700,34 @@ gs_level (SS_GotoOrShift r gs) = gs
 gs_level (SS_FinalReduce r gs) = gs
 
 --
+extendedCompCandidates
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+extendedCompCandidates ccOption level symbols state stk = do
+  maybeConfig <- readConfig
+  case maybeConfig of
+    Nothing -> repReduce ccOption level symbols state stk
+    Just config ->
+      let r_level  = config_R_LEVEL config
+          gs_level = config_GS_LEVEL config
+          debugFlag = config_DEBUG config
+          display  = config_DISPLAY config
+          isSimple = config_SIMPLE config
+
+          ccOption' = ccOption { cc_debugFlag = debugFlag
+                               , cc_r_level = r_level
+                               , cc_gs_level = gs_level
+                               , cc_simpleOrNested = isSimple
+                               , cc_searchState = initSearchState r_level gs_level
+                               }
+                      
+      in do debug debugFlag $ "simple(True)/nested(False): " ++ show isSimple
+            debug debugFlag $ "(Max) r level: " ++ show r_level
+            debug debugFlag $ "(Max) gs level: " ++ show gs_level
+            debug debugFlag $ ""
+            
+            repReduce ccOption' level symbols state stk
+
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
      CompCandidates token ast -> Int -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
@@ -1003,7 +1047,14 @@ data HandleParseError token = HandleParseError {
 --   unwrapParseError flag maxLevel isSimple terminalListAfterCursor parseError
   
 handleParseError :: TokenInterface token => HandleParseError token -> ParseError token ast -> IO [EmacsDataItem]
-handleParseError hpeOption parseError = unwrapParseError hpeOption parseError
+handleParseError hpeOption parseError =
+  do maybeConfig <- readConfig
+  
+     flag <- case maybeConfig of
+               Nothing -> return $ debugFlag hpeOption
+               Just config -> return $ config_DEBUG config
+
+     unwrapParseError hpeOption{debugFlag = flag} parseError
 
   --
 unwrapParseError hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules terminalList maybeStatus) = do
@@ -1047,7 +1098,9 @@ _handleParseError
         cc_searchMaxLevel=maxLevel,
         cc_simpleOrNested=isSimple,
         cc_automaton=automaton,
-        cc_searchState = initSearchState init_r_level init_gs_level} -- Specifying a level
+        cc_searchState = initSearchState init_r_level init_gs_level,
+        cc_r_level = init_r_level,  
+        cc_gs_level = init_gs_level} 
   candidateListList <- compCandidates ccOption 0 [] state stk
   let colorListList_symbols =
        [ filterCandidates candidateList terminalListAfterCursor
@@ -1060,8 +1113,18 @@ _handleParseError
   let colorListList = map collapseCandidates colorListList_
   let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
   let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
-  debug flag $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
-  debug flag $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+
+  debug (flag || True) $ ""
+  mapM_ (debug (flag || True)) $ map show colorListList_symbols
+  
+  debug (flag || True) $ ""
+  mapM_ (debug (flag || True)) $ map show rawStrListList
+  
+  debug (flag || True) $ ""
+  
+  -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
+  -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+  
   return $ map Candidate strList
   
   where
