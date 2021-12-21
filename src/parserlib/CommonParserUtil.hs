@@ -462,6 +462,7 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
 debug :: Bool -> String -> IO ()
 debug flag msg = if flag then putStrLn msg else return ()
 
+prlevel :: Int -> String
 prlevel n = take n (let spaces = ' ' : spaces in spaces)
 
 -- | Computing candidates
@@ -485,6 +486,7 @@ data Automaton token ast =
 data CompCandidates token ast = CompCandidates {
     cc_debugFlag :: Bool,
     cc_printLevel :: Int,  
+    cc_maxLevel :: Int,  
     
     cc_r_level :: Int,         -- for new algorithm
     cc_gs_level :: Int,        --
@@ -525,7 +527,8 @@ compGammasDfs
 
 compGammasDfs ccOption level symbols state stk history =
   let flag = cc_debugFlag ccOption
-      maxLevel = cc_printLevel ccOption
+      maxLevel = cc_maxLevel ccOption
+      printLevel = cc_printLevel ccOption
       isSimple = cc_simpleOrNested ccOption
       automaton = cc_automaton ccOption
       
@@ -735,8 +738,7 @@ repReduce
 
 repReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      -- maxLevel        = cc_searchMaxLevel ccOption
-      level           = cc_printLevel
+      level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       searchState     = cc_searchState ccOption
@@ -744,39 +746,65 @@ repReduce ccOption symbols state stk =
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
-  in do -- debug flag $ prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)
+  in -- do debug flag $ prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)
 
-        case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
-                         , state==s
-                         , isReducible productionRules prnum stk] of
-           []        -> if isFinalReduce (cc_searchState ccOption)
-                        then do return []
+     if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
+     then do
+            debug flag $ prlevel level ++ "accept: " ++ show state
+            return []
 
-                        else repGotoOrShift
-                               (ccOption {cc_searchState =
-                                          SS_GotoOrShift
-                                            (r_level (cc_searchState ccOption))
-                                            (gs_level (cc_searchState ccOption)) })
-                                 symbols state stk
+     else do
+            case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
+                             , state==s
+                             , isReducible productionRules prnum stk] of
+               []        -> if isFinalReduce (cc_searchState ccOption)
+                            then return []
 
-           prnumList -> do let len = length prnumList
+                            else repGotoOrShift
+                                   (ccOption {cc_searchState =
+                                              SS_GotoOrShift
+                                                (r_level (cc_searchState ccOption))
+                                                (gs_level (cc_searchState ccOption)) })
+                                     symbols state stk
 
-                           listOfList1 <-
-                             mapM (\ (prnum, i) ->
-                                     simulReduce ccOption symbols prnum len i state stk)
-                               (zip prnumList [1..])
+               prnumList -> do let len = length prnumList
 
-                           listOfList2 <- if isFinalReduce (cc_searchState ccOption)
-                                          then do return []
+                               listOfList <-
+                                 mapM (\ (prnum, i) ->
+                                         do let searchState = cc_searchState ccOption
+                                            list2 <-
+                                              -- SS_InitReduces
+                                              if isInitReduces searchState then
+                                                do repGotoOrShift
+                                                     (ccOption {cc_searchState =
+                                                                  SS_GotoOrShift
+                                                                    (r_level (cc_searchState ccOption))
+                                                                    (gs_level (cc_searchState ccOption)) })
+                                                       symbols state stk
 
-                                          else repGotoOrShift
-                                                 (ccOption {cc_searchState =
-                                                              SS_GotoOrShift
-                                                                (r_level (cc_searchState ccOption))
-                                                                (gs_level (cc_searchState ccOption)) })
-                                                   symbols state stk
+                                              -- SS_FinalReduce
+                                              else if isFinalReduce searchState then
+                                                do simulReduce ccOption symbols prnum len i state stk
 
-                           return $ listOfList2 ++ concat listOfList1
+                                              -- SS_GotoOrShift: never reach here!
+                                              else
+                                                do error $ "repReduce: Unexpected search state: " ++ show searchState
+
+                                            list1 <- simulReduce ccOption symbols prnum len i state stk
+                                            return $ list2 ++ list1)
+                                   (zip prnumList [1..])
+
+                               -- list2 <- if isFinalReduce (cc_searchState ccOption)
+                               --          then do return []
+
+                               --          else repGotoOrShift
+                               --                 (ccOption {cc_searchState =
+                               --                              SS_GotoOrShift
+                               --                                (r_level (cc_searchState ccOption))
+                               --                                (gs_level (cc_searchState ccOption)) })
+                               --                   symbols state stk
+
+                               return $ concat listOfList
 
 simulReduce ccOption symbols prnum len i state stk =
   let flag      = cc_debugFlag ccOption
@@ -816,25 +844,33 @@ simulReduce ccOption symbols prnum len i state stk =
                let stk3 = push (StkState toState) stk2
 
                if isSimple then  -- simple mode
-                 if not (null symbols) then
-                   do return (if null symbols
-                           then []
-                           else [symbols])
-                 else if isFinalReduce searchState then
-                   do return (if null symbols
-                           then []
-                           else [symbols])
-                 else if isInitReduces searchState then -- reduces until symbols are found
+                 -- if not (null symbols) then
+                 --   do return (if null symbols
+                 --           then []
+                 --           else [symbols])
+                 if isInitReduces searchState then -- reduces until symbols are found
                    do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
 
                       return (if null symbols
                               then listOfList
-                              else (symbols : map (symbols ++) listOfList))
-                 else
+                              else symbols : map (symbols ++) listOfList)
+                 else if isFinalReduce searchState then
+                   do return (if null symbols
+                           then []
+                           else [symbols])
+                 else -- SS_GotoOrShift
                    do error $ "simulReduce: Unexpected search state" ++ show searchState
                     
                else -- nested mode
-                 if isFinalReduce searchState then 
+                 if isInitReduces searchState then -- Same as for the simple mode!
+                   do
+                      listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
+
+                      return (if null symbols
+                              then listOfList
+                              else symbols : map (symbols ++) listOfList)
+
+                 else if isFinalReduce searchState then 
                    do
                       listOfList <-
                          if r_level (cc_searchState ccOption) - 1 > 0 then
@@ -842,7 +878,8 @@ simulReduce ccOption symbols prnum len i state stk =
                              (ccOption{ cc_searchState=
                                          SS_InitReduces
                                            (r_level (cc_searchState ccOption) - 1)
-                                           (gs_level (cc_searchState ccOption))
+                                           -- (gs_level (cc_searchState ccOption))
+                                           (cc_gs_level ccOption)
                                       , cc_printLevel=level+1})
                                 [] toState stk3
                          else return []
@@ -851,21 +888,12 @@ simulReduce ccOption symbols prnum len i state stk =
                               then listOfList
                               else symbols : map (symbols++) listOfList)
 
-                 else if isInitReduces searchState then
-                   do
-                      listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
-
-                      return (if null symbols
-                              then listOfList
-                              else (symbols : map (symbols ++) listOfList))
-
-                 else
-                   do error $ "simulReduce: Unexpected search state" ++ show searchState
+                 else -- Same as for the simple mode!
+                   do error $ "simulReduce: Unexpected search state: " ++ show searchState
 
 
 simulGoto ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      -- maxLevel        = cc_searchMaxLevel ccOption
       level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
@@ -905,7 +933,6 @@ simulGoto ccOption symbols state stk =
 
 simulShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      -- maxLevel        = cc_searchMaxLevel ccOption
       level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
@@ -948,7 +975,6 @@ repGotoOrShift
 
 repGotoOrShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
-      -- maxLevel        = cc_searchMaxLevel ccOption
       level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
@@ -958,7 +984,7 @@ repGotoOrShift ccOption symbols state stk =
       productionRules = prodRules automaton
   in do -- debug flag $ prlevel level ++ "[repGotoOrShift] " ++ show (cc_searchState ccOption)
     
-        if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
+        if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
         then do
                debug flag $ prlevel level ++ "accept: " ++ show state
                return []
@@ -979,14 +1005,19 @@ repGotoOrShift ccOption symbols state stk =
                                                (r_level (cc_searchState ccOption))
                                                (gs_level (cc_searchState ccOption) - 1)}
                          in
-                         do listOfList2 <- simulGoto ccOption' symbols state stk
-                            if null listOfList2
-                              then do listOfList3 <- simulShift ccOption' symbols state stk
-                                      return listOfList3
+                         -- do listOfList2 <- simulGoto ccOption' symbols state stk
+                         --    if null listOfList2
+                         --      then do listOfList3 <- simulShift ccOption' symbols state stk
+                         --              return listOfList3
 
-                              else do return listOfList2
+                         --      else do return listOfList2
+
+                         do listOfList2 <- simulGoto ccOption' symbols state stk
+                            listOfList3 <- simulShift ccOption' symbols state stk
+                            return $ listOfList2 ++ listOfList3
+
                        else
-                         return []
+                         return []  -- Q: symbols or []
 
                   else do return listOfList1
                     
@@ -1102,7 +1133,8 @@ _handleParseError
   state stk automaton = do
   let ccOption = CompCandidates {
         cc_debugFlag=flag,
-        cc_printLevel=maxLevel,
+        cc_printLevel=0,
+        cc_maxLevel=maxLevel,
         cc_simpleOrNested=isSimple,
         cc_automaton=automaton,
         cc_searchState = initSearchState init_r_level init_gs_level,
