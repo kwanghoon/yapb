@@ -845,26 +845,27 @@ repReduce ccOption symbols state stk =
                                listOfList <-
                                  mapM (\ (prnum, i) ->
                                          do let searchState = cc_searchState ccOption
-                                            list2 <-
-                                              -- SS_InitReduces
-                                              if isInitReduces searchState then
-                                                do repGotoOrShift
-                                                     (ccOption {cc_searchState =
-                                                                  SS_GotoOrShift
-                                                                    (r_level (cc_searchState ccOption))
-                                                                    (gs_level (cc_searchState ccOption)) })
-                                                       symbols state stk
+                                            
+                                            -- SS_InitReduces
+                                            if isInitReduces searchState then
+                                              do list2 <- repGotoOrShift
+                                                           (ccOption {cc_searchState =
+                                                                        SS_GotoOrShift
+                                                                          (r_level (cc_searchState ccOption))
+                                                                          (gs_level (cc_searchState ccOption)) })
+                                                             symbols state stk
 
-                                              -- SS_FinalReduce
-                                              else if isFinalReduce searchState then
-                                                do simulReduce ccOption symbols prnum len i state stk
+                                                 list1 <- simulReduce ccOption symbols prnum len i state stk
+                                                 return $ list2 ++ list1
 
-                                              -- SS_GotoOrShift: never reach here!
-                                              else
-                                                do error $ "repReduce: Unexpected search state: " ++ show searchState
+                                            -- SS_FinalReduce
+                                            else if isFinalReduce searchState then
+                                              do simulReduce ccOption symbols prnum len i state stk
 
-                                            list1 <- simulReduce ccOption symbols prnum len i state stk
-                                            return $ list2 ++ list1)
+                                            -- SS_GotoOrShift: never reach here!
+                                            else
+                                              do error $ "repReduce: Unexpected search state: " ++ show searchState)
+
                                    (zip prnumList [1..])
 
                                -- list2 <- if isFinalReduce (cc_searchState ccOption)
@@ -904,7 +905,7 @@ simulReduce ccOption symbols prnum len i state stk =
        debug flag $ prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)
        debug flag $ ""
 
-       if (rhsLength > length symbols) == False && False -- Q: 필요?
+       if (rhsLength > length symbols) == False && False -- Q: 필요? False for the moment!
        then do return []
 
        else do let stk1 = drop (rhsLength*2) stk
@@ -1050,12 +1051,6 @@ repGotoOrShift ccOption symbols state stk =
                                                (r_level (cc_searchState ccOption))
                                                (gs_level (cc_searchState ccOption) - 1)}
                          in
-                         -- do listOfList2 <- simulGoto ccOption' symbols state stk
-                         --    if null listOfList2
-                         --      then do listOfList3 <- simulShift ccOption' symbols state stk
-                         --              return listOfList3
-
-                         --      else do return listOfList2
 
                          do listOfList2 <- simulGoto ccOption' symbols state stk
                             listOfList3 <- simulShift ccOption' symbols state stk
