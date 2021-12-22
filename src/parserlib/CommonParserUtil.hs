@@ -997,7 +997,7 @@ repGotoOrShift ccOption symbols state stk =
                                                (gs_level (cc_searchState ccOption))})
                                    symbols state stk
 
-                if null listOfList1
+                if null listOfList1 -- || isInitReduces (cc_searchState ccOption)
                   then
                        if gs_level (cc_searchState ccOption) - 1 > 0 then
                          let ccOption' = ccOption{cc_searchState=
@@ -1014,13 +1014,21 @@ repGotoOrShift ccOption symbols state stk =
 
                          do listOfList2 <- simulGoto ccOption' symbols state stk
                             listOfList3 <- simulShift ccOption' symbols state stk
-                            return $ listOfList2 ++ listOfList3
+                            return $ listOfList1 ++ listOfList2 ++ listOfList3
 
                        else
-                         return []  -- Q: symbols or []
+                         return listOfList1  -- Q: symbols or []
 
                   else do return listOfList1
-                    
+
+-- Todo: repReduce를 하지 않고
+--       Reduce 액션이 있는지 보고
+--       없으면 goto or shift 진행하고
+--       있으면 reduce한번하고 종료!
+
+--       현재 구현은 repReduce 결과가 널인지 검사해서 진행 또는 종료
+--       Reduce 액션이 있어도 진행될 수 있음!
+
 --
 isReducible productionRules prnum stk =
   let 
