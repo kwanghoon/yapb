@@ -707,10 +707,11 @@ extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
      CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
 extendedCompCandidates ccOption symbols state stk = do
-  let level = 0
   maybeConfig <- readConfig
   case maybeConfig of
-    Nothing -> repReduce ccOption symbols state stk
+    Nothing ->
+      do extendedCompCandidates' ccOption symbols state stk
+         
     Just config ->
       let r_level  = config_R_LEVEL config
           gs_level = config_GS_LEVEL config
@@ -725,16 +726,66 @@ extendedCompCandidates ccOption symbols state stk = do
                                , cc_searchState = initSearchState r_level gs_level
                                }
                       
-      in do debug debugFlag $ "simple(True)/nested(False): " ++ show isSimple
-            debug debugFlag $ "(Max) r level: " ++ show r_level
-            debug debugFlag $ "(Max) gs level: " ++ show gs_level
-            debug debugFlag $ ""
-            
-            repReduce ccOption' symbols state stk
+      in extendedCompCandidates' ccOption' symbols state stk
+
+  where
+    extendedCompCandidates' ccOption symbols state stk =
+      let
+         debugFlag = cc_debugFlag ccOption
+         isSimple  = cc_simpleOrNested ccOption
+         r_level   = cc_r_level ccOption
+         gs_level  = cc_gs_level ccOption
+      in
+      do debug debugFlag $ "simple(True)/nested(False): " ++ show isSimple
+         debug debugFlag $ "(Max) r level: " ++ show r_level
+         debug debugFlag $ "(Max) gs level: " ++ show gs_level
+         debug debugFlag $ ""
+
+         list <- if isSimple
+                   then repReduce ccOption symbols state stk 
+                   else do extendedNestedCandidates ccOption [(state, stk, symbols)]
+                   
+         return [ c | (state, stk, c) <- list, null c == False ]
+
+
+-- Extended simple candidates
+extendedSimpleCandidates
+    :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+       CompCandidates token ast -> Int -> Stack token ast -> IO [(Int, Stack token ast, [Candidate])]
+       
+extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk 
+
+
+-- Extended nested candidates
+extendedNestedCandidates
+    :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+       CompCandidates token ast -> [(Int, Stack token ast, [Candidate])]
+       -> IO [(Int, Stack token ast, [Candidate])]
+       
+extendedNestedCandidates ccOption initStateStkCandsList =
+  let f (state, stk, symbols) = repReduce ccOption{cc_simpleOrNested=True} symbols state stk
+  in  
+  do stateStkCandsListList <- mapM f initStateStkCandsList
+     
+     if null stateStkCandsListList
+       then return initStateStkCandsList
+       else do nextStateStkCandsList <-
+                 extendedNestedCandidates ccOption
+                    [ (toState, toStk, fromCand ++ toCand)
+
+                    | ((fromState, fromStk, fromCand), toList)
+                        <- zip initStateStkCandsList stateStkCandsListList
+
+                    , (toState, toStk, toCand) <- toList
+                    ]
+
+               return $ initStateStkCandsList ++ nextStateStkCandsList
+
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast
+     -> IO [(Int, Stack token ast, [Candidate])]
 
 repReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
@@ -844,52 +895,24 @@ simulReduce ccOption symbols prnum len i state stk =
                let stk3 = push (StkState toState) stk2
 
                if isSimple then  -- simple mode
-                 -- if not (null symbols) then
-                 --   do return (if null symbols
-                 --           then []
-                 --           else [symbols])
+
                  if isInitReduces searchState then -- reduces until symbols are found
                    do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
 
+                      let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
+
                       return (if null symbols
                               then listOfList
-                              else symbols : map (symbols ++) listOfList)
+                              else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
                  else if isFinalReduce searchState then
                    do return (if null symbols
                            then []
-                           else [symbols])
+                           else [(toState, stk3, symbols)])
                  else -- SS_GotoOrShift
                    do error $ "simulReduce: Unexpected search state" ++ show searchState
                     
                else -- nested mode
-                 if isInitReduces searchState then -- Same as for the simple mode!
-                   do
-                      listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
-
-                      return (if null symbols
-                              then listOfList
-                              else symbols : map (symbols ++) listOfList)
-
-                 else if isFinalReduce searchState then 
-                   do
-                      listOfList <-
-                         if r_level (cc_searchState ccOption) - 1 > 0 then
-                           repReduce
-                             (ccOption{ cc_searchState=
-                                         SS_InitReduces
-                                           (r_level (cc_searchState ccOption) - 1)
-                                           -- (gs_level (cc_searchState ccOption))
-                                           (cc_gs_level ccOption)
-                                      , cc_printLevel=level+1})
-                                [] toState stk3
-                         else return []
-
-                      return (if null symbols
-                              then listOfList
-                              else symbols : map (symbols++) listOfList)
-
-                 else -- Same as for the simple mode!
-                   do error $ "simulReduce: Unexpected search state: " ++ show searchState
+                 do error $ "simulReduce: Unexpected nested mode: "
 
 
 simulGoto ccOption symbols state stk =
@@ -971,7 +994,7 @@ simulShift ccOption symbols state stk =
 
 repGotoOrShift
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [(Int, Stack token ast, [Candidate])]
 
 repGotoOrShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
