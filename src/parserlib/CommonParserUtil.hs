@@ -503,7 +503,7 @@ compCandidates
      -> [Candidate]
      -> Int
      -> Stack token ast
-     -> IO [[Candidate]]
+     -> IO ([[Candidate]], Bool)
 
 compCandidates ccOption level symbols state stk = do
   let flag = cc_debugFlag ccOption
@@ -705,12 +705,13 @@ gs_level (SS_FinalReduce r gs) = gs
 --
 extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [[Candidate]]
+     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO ([[Candidate]], Bool)
 extendedCompCandidates ccOption symbols state stk = do
   maybeConfig <- readConfig
   case maybeConfig of
     Nothing ->
-      do extendedCompCandidates' ccOption symbols state stk
+      do list <- extendedCompCandidates' ccOption symbols state stk
+         return (list, True)
          
     Just config ->
       let r_level  = config_R_LEVEL config
@@ -726,7 +727,9 @@ extendedCompCandidates ccOption symbols state stk = do
                                , cc_searchState = initSearchState r_level gs_level
                                }
                       
-      in extendedCompCandidates' ccOption' symbols state stk
+      in
+      do list <- extendedCompCandidates' ccOption' symbols state stk
+         return (list, display)
 
   where
     extendedCompCandidates' ccOption symbols state stk =
@@ -1188,7 +1191,7 @@ _handleParseError
         cc_searchState = initSearchState init_r_level init_gs_level,
         cc_r_level = init_r_level,  
         cc_gs_level = init_gs_level} 
-  candidateListList <- compCandidates ccOption 0 [] state stk
+  (candidateListList, emacsDisplay) <- compCandidates ccOption 0 [] state stk
   let colorListList_symbols =
        [ filterCandidates candidateList terminalListAfterCursor
        | candidateList <- candidateListList ]
@@ -1212,7 +1215,7 @@ _handleParseError
   -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
   -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
   
-  return $ map Candidate strList
+  return $ if emacsDisplay then map Candidate strList else [] 
   
   where
     showConcat [] = ""

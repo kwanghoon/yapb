@@ -22,17 +22,17 @@ acceptLoop :: ComputeCandidate -> Socket -> IO ()
 acceptLoop computeCand sock = forever $ do
     (conn, _) <- accept sock
     (cursorPos, isSimple) <- getCursorPos_and_isSimple conn
-    print (cursorPos, isSimple)
+    -- print (cursorPos, isSimple)
     close conn
     (conn, _) <- accept sock
     str <- getSource conn
-    print str
+    -- print str
     close conn
     (conn, _) <- accept sock
     strAfterCursor <- getSource conn
-    print strAfterCursor
+    -- print strAfterCursor
     candidateList <- computeCand str strAfterCursor isSimple
-    print (Prelude.map show candidateList)
+    -- print (Prelude.map show candidateList)
     close conn
     (conn, _) <- accept sock
     sendCandidateList conn candidateList

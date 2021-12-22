@@ -10,7 +10,7 @@ data Configuration =
     config_R_LEVEL :: Int,    -- 
     config_GS_LEVEL :: Int,   -- 
     config_DEBUG :: Bool,     -- True => Debugging on, False => Debugging off
-    config_DISPLAY :: Bool    -- True => ...,          False => Nonterminal name
+    config_DISPLAY :: Bool    -- True => Display in Emacs, False => Do not display in Emacs
   }
   deriving (Read, Show)
 
