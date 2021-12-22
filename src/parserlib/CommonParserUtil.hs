@@ -763,24 +763,46 @@ extendedNestedCandidates
        -> IO [(Int, Stack token ast, [Candidate])]
        
 extendedNestedCandidates ccOption initStateStkCandsList =
-  let f (state, stk, symbols) = repReduce ccOption{cc_simpleOrNested=True} symbols state stk
-  in  
-  do stateStkCandsListList <- mapM f initStateStkCandsList
-     
-     if null stateStkCandsListList
-       then return initStateStkCandsList
-       else do nextStateStkCandsList <-
-                 extendedNestedCandidates ccOption
-                    [ (toState, toStk, fromCand ++ toCand)
+  let f (state, stk, symbols) =
+        do debug debugFlag $ "Given "
+           debug debugFlag $ " - state " ++ show state
+           debug debugFlag $ " - stack " ++ prStack stk
+           debug debugFlag $ " - cand  " ++ show symbols
+           debug debugFlag $ ""
+           
+           repReduce ccOption{cc_simpleOrNested=True} symbols state stk
 
-                    | ((fromState, fromStk, fromCand), toList)
-                        <- zip initStateStkCandsList stateStkCandsListList
+      debugFlag = cc_debugFlag ccOption
+      r_level   = cc_r_level ccOption
+  in
+  if r_level > 0
+  then
+    do debug debugFlag $ "[extendedNestedCandidates] :"
+       mapM_ (\(state, stk, cand) ->
+                 do debug debugFlag $ " - state " ++ show state
+                    debug debugFlag $ " - stack " ++ prStack stk
+                    debug debugFlag $ " - cand  " ++ show cand
+                    debug debugFlag $ ""
+             ) initStateStkCandsList
 
-                    , (toState, toStk, toCand) <- toList
-                    ]
+       stateStkCandsListList <- mapM f initStateStkCandsList
 
-               return $ initStateStkCandsList ++ nextStateStkCandsList
+       if null stateStkCandsListList
+         then return initStateStkCandsList
+         else do nextStateStkCandsList <-
+                   extendedNestedCandidates ccOption{cc_r_level=r_level-1}
+                      [ (toState, toStk, fromCand ++ toCand)
 
+                      | ((fromState, fromStk, fromCand), toList)
+                          <- zip initStateStkCandsList stateStkCandsListList
+
+                      , (toState, toStk, toCand) <- toList
+                      ]
+
+                 return $ initStateStkCandsList ++ nextStateStkCandsList
+
+  else
+    return []
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -882,7 +904,7 @@ simulReduce ccOption symbols prnum len i state stk =
        debug flag $ prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)
        debug flag $ ""
 
-       if (rhsLength > length symbols) == False
+       if (rhsLength > length symbols) == False && False -- Q: 필요?
        then do return []
 
        else do let stk1 = drop (rhsLength*2) stk
