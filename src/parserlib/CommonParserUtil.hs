@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 module CommonParserUtil
-  ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..), HandleParseError(..)
+  ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
+  , HandleParseError(..), defaultHandleParseError
   , lexing, lexingWithLineColumn, _lexingWithLineColumn
   , parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
@@ -1127,7 +1128,17 @@ data HandleParseError token = HandleParseError {
     searchMaxLevel :: Int,
     simpleOrNested :: Bool,
     postTerminalList :: [Terminal token],
-    nonterminalToStringMaybe :: Maybe (String->String)
+    nonterminalToStringMaybe :: Maybe (String->String),
+    presentation :: Int  -- 0: default, no transformation. 1: a list of the first symbols
+  }
+
+defaultHandleParseError = HandleParseError {
+    debugFlag = False,
+    searchMaxLevel = 1,
+    simpleOrNested = True,
+    postTerminalList = [],
+    nonterminalToStringMaybe = Nothing,
+    presentation = 0
   }
 
 -- | handleParseError
@@ -1139,11 +1150,13 @@ handleParseError :: TokenInterface token => HandleParseError token -> ParseError
 handleParseError hpeOption parseError =
   do maybeConfig <- readConfig
   
-     flag <- case maybeConfig of
-               Nothing -> return $ debugFlag hpeOption
-               Just config -> return $ config_DEBUG config
+     let hpeOption' =
+           case maybeConfig of
+             Nothing     -> hpeOption
+             Just config -> hpeOption{debugFlag = config_DEBUG config
+                                     ,presentation = config_PRESENTATION config}
 
-     unwrapParseError hpeOption{debugFlag = flag} parseError
+     unwrapParseError hpeOption' parseError
 
   --
 unwrapParseError hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules terminalList maybeStatus) = do
@@ -1180,7 +1193,8 @@ _handleParseError
       searchMaxLevel=maxLevel,
       simpleOrNested=isSimple,
       postTerminalList=terminalListAfterCursor,
-      nonterminalToStringMaybe=_nonterminalToStringMaybe})
+      nonterminalToStringMaybe=_nonterminalToStringMaybe,
+      presentation=howtopresent})
   state stk automaton = do
   let ccOption = CompCandidates {
         cc_debugFlag=flag,
@@ -1201,7 +1215,8 @@ _handleParseError
           Just fn -> fn
   let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols
   let colorListList = map collapseCandidates colorListList_
-  let strList = nub [ concatStrList strList | strList <- map (map showEmacsColor) colorListList ]
+  let emacsColorListList  = map (map showEmacsColor) colorListList
+  let strList = nub [ concatStrList strList | strList <- emacsColorListList ]
   let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
 
   debug (flag || True) $ ""
@@ -1214,8 +1229,17 @@ _handleParseError
   
   -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
   -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+
+  let formattedStrList =
+        case howtopresent of
+          0 -> strList
+          1 -> nub [ if null strList then "" else head strList | strList <- emacsColorListList ]
+          _ -> error $ "Does not support prsentation method: " ++ show howtopresent
+
   
-  return $ if emacsDisplay then map Candidate strList else [] 
+  return $ if emacsDisplay
+             then map Candidate formattedStrList
+             else [] 
   
   where
     showConcat [] = ""

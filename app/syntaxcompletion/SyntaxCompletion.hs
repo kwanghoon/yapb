@@ -40,7 +40,7 @@ computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (d
           do (_, _, terminalListAfterCursor) <-
                lexingWithLineColumn lexerSpec line column programTextAfterCursor
              handleParseError
-               (HandleParseError {
+               (defaultHandleParseError {
                    debugFlag=debug,
                    searchMaxLevel=maxLevel,
                    simpleOrNested=isSimpleMode,
