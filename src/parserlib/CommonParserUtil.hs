@@ -1056,9 +1056,26 @@ repGotoOrShift ccOption symbols state stk =
                                                (gs_level (cc_searchState ccOption) - 1)}
                          in
 
-                         do listOfList2 <- simulGoto ccOption' symbols state stk
-                            listOfList3 <- simulShift ccOption' symbols state stk
-                            return $ listOfList1 ++ listOfList2 ++ listOfList3
+                         -- both goto and shift only once 
+                         if gs_level (cc_searchState ccOption) == cc_gs_level ccOption
+                         then
+
+                           do listOfList2 <- simulGoto ccOption' symbols state stk
+                              listOfList3 <- simulShift ccOption' symbols state stk
+                              return $ listOfList1 ++ listOfList2 ++ listOfList3
+
+                         else
+
+                           do listOfList2 <- simulGoto ccOption' symbols state stk
+
+                              if null listOfList2
+                              then
+
+                                do listOfList3 <- simulShift ccOption' symbols state stk
+                                   return $ listOfList1 ++ listOfList2 ++ listOfList3
+
+                              else
+                                return $ listOfList1 ++ listOfList2
 
                        else
                          return listOfList1  -- Q: symbols or []
