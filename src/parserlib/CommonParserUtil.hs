@@ -774,7 +774,7 @@ extendedNestedCandidates ccOption initStateStkCandsList =
            debug debugFlag $ " - cand  " ++ show symbols
            debug debugFlag $ ""
            
-           repReduce ccOption{cc_simpleOrNested=True} symbols state stk
+           repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
 
       debugFlag = cc_debugFlag ccOption
       r_level   = cc_r_level ccOption
