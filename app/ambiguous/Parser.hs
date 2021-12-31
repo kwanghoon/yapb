@@ -17,10 +17,10 @@ parserSpec = ParserSpec
     startSymbol = "Expr'",
 
     tokenPrecAssoc =
-    [ (Attrs.Nonassoc, [ "integer_number" ])
-    , (Attrs.Left,     [ "+", "-" ])
-    , (Attrs.Left,     [ "*", "/" ])
-    , (Attrs.Right,    [ "UMINUS" ])
+    [ (Attrs.Nonassoc, [ "integer_number" ])   -- %token integer_number
+    , (Attrs.Left,     [ "+", "-" ])           -- %left "+" "-"
+    , (Attrs.Left,     [ "*", "/" ])           -- %left "*" "/"
+    , (Attrs.Right,    [ "UMINUS" ])           -- %right UMINUS
     ],
     
     parserSpecList =
@@ -45,7 +45,7 @@ parserSpec = ParserSpec
 
       rule "Expr -> ( Expr )" (\rhs -> get rhs 2),
       
-      ruleWithPrec "Expr -> - Expr" "UMINUS"
+      ruleWithPrec "Expr -> - Expr" "UMINUS"    -- Expr -> -Expr %prec UMINUS
         (\rhs -> toAstExpr (
           BinOp Expr.SUB (Lit 0) (fromAstExpr (get rhs 2))) ),
       
