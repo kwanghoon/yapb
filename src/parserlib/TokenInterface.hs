@@ -4,7 +4,4 @@ class TokenInterface token where
   -- toToken    :: String -> token
   fromToken  :: token -> String
 
-
-  
-
   

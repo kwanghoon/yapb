@@ -61,6 +61,8 @@ data Action = Shift Int | Reduce Int | Accept | Reject
 type ActionTable = [(Int, ExtendedSymbol, Action)] -- state, terminal, action
 type GotoTable   = [(Int, Symbol, Int)]    -- state, nonterminal, state
 
+type ConflictsResolved = [(Int, ExtendedSymbol, Action, Action)]
+
 lookupTable :: (Eq a, Eq b) => a -> b -> [(a,b,c)] -> Maybe c
 lookupTable i x [] 
   = Nothing 

@@ -3,10 +3,12 @@ module CFG where
 import Data.List(nub,intersperse)
 
 --------------------------------------------------------------------------------
--- Context Free Grammar
+-- | Context Free Grammar
 --------------------------------------------------------------------------------
+
+-- | Terminals and nonterminals
 data Symbol = Nonterminal String | Terminal String 
-    deriving (Eq, Read)
+    deriving (Eq, Ord, Read)
              
 instance Show Symbol where
   showsPrec p (Nonterminal x) = (++) x
@@ -16,7 +18,7 @@ isTerminal (Terminal x) = True
 isTerminal _            = False
   
 data ExtendedSymbol = Symbol Symbol | Epsilon | EndOfSymbol
-    deriving Eq
+    deriving (Eq, Ord)
              
 instance Show ExtendedSymbol where
   showsPrec p (Symbol sym)    = (++) (show sym)
@@ -30,7 +32,8 @@ isExtendedTerminal _                     = False
 isExtendedNonterminal (Symbol (Nonterminal x)) = True  
 isExtendedNonterminal _                        = False
 
-data ProductionRule = ProductionRule String [Symbol] 
+-- | Production rules
+data ProductionRule = ProductionRule String [Symbol]
          deriving (Eq, Read)
                   
 instance Show ProductionRule where
@@ -42,6 +45,7 @@ show_ys []     = (++) ""
 show_ys [y] = (++) (show y) 
 show_ys (y:ys) = (++) (show y) . (++) " " . show_ys ys
 
+-- | Context-free grammar
 data CFG = CFG String [ProductionRule] 
          deriving (Show, Read)
 
@@ -59,6 +63,4 @@ prodRuleToStr (ProductionRule s syms) =
 
 symbolToStr (Nonterminal x) = "Nonterminal " ++ show x
 symbolToStr (Terminal x) = "Terminal " ++ show x
-
-
 

@@ -1,0 +1,8 @@
+Applications using YAPB
+ - arith
+ - smllike
+ - polyrpc
+ - yapb/app/syntaxcompletion
+ - yapb/app/parser
+ - sbparser
+ - happy/hslexer

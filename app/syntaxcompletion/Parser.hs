@@ -4,34 +4,41 @@ import CommonParserUtil
 import Token
 import Expr
 
+-- | Utility
+rule prodRule action              = (prodRule, action, Nothing  )
+ruleWithPrec prodRule action prec = (prodRule, action, Just prec)
+
 noAction = \rhs -> ()
 
+--
 parserSpec :: ParserSpec Token AST
 parserSpec = ParserSpec
   {
     startSymbol = "Start'",
     
+    tokenPrecAssoc = [],
+    
     parserSpecList =
     [
-      ("Start' -> Start", noAction),
+      rule "Start' -> Start" noAction,
 
-      ("Start -> Exp", noAction),
+      rule "Start -> Exp" noAction,
 
-      ("Exp -> AppExp", noAction),
+      rule "Exp -> AppExp" noAction,
 
-      ("Exp -> fn identifier => Exp", noAction),
+      rule "Exp -> fn identifier => Exp" noAction,
 
-      ("AppExp -> AtExp", noAction),
+      rule "AppExp -> AtExp" noAction,
 
-      ("AppExp -> AppExp AtExp", noAction),
+      rule "AppExp -> AppExp AtExp" noAction,
 
-      ("AtExp -> identifier", noAction),
+      rule "AtExp -> identifier" noAction,
 
-      ("AtExp -> ( Exp )", noAction),
+      rule "AtExp -> ( Exp )" noAction,
 
-      ("AtExp -> let Dec in Exp end", noAction),
+      rule "AtExp -> let Dec in Exp end" noAction,
 
-      ("Dec -> val identifier = Exp", noAction)
+      rule "Dec -> val identifier = Exp" noAction
     ],
     
     baseDir = "./",

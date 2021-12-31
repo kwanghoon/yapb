@@ -5,9 +5,10 @@ import System.IO
 import System.Directory
 import CFG
 
-saveProdRules :: String -> String -> [String] -> IO Bool
-saveProdRules fileName startSymbol prodRuleStrs = do
-  writeOnceWithHash fileName grmStrLn
+saveProdRules :: String -> String -> [String] -> String -> String -> IO Bool
+saveProdRules fileName startSymbol prodRuleStrs tokenAttrs prodRuleAttrs = do
+  writeOnceWithHash fileName
+    ("(" ++ grmStrLn ++ ",\n" ++ tokenAttrs ++ ",\n" ++ prodRuleAttrs ++ ")")
   where
     grmStr   = toCFG startSymbol prodRuleStrs
     grmStrLn = grmStr ++ "\n"

@@ -124,11 +124,11 @@ cgEnum name action =
      putStrLn "};"
 
 -- C array for goto_table
-cgGotoTable augCfg =
+cgGotoTable augCfg iss gotoTbl =
   do prGotoTableDim (length iss) (length nts)
      prGotoTableArr iss nts gotoTbl
   where
-    (_,_,iss,_,gotoTbl) = calcLALRParseTable augCfg
+    -- (_,_,iss,_,gotoTbl) = calcLALRParseTable augCfg
     nts                 = nonterminals augCfg
     
 cg_noofstates   = "NOOFSTATES"
@@ -170,7 +170,7 @@ prGotoTableArr'' i (x:nonterms) gotoTbl =
                   prGotoTableArr'' i nonterms gotoTbl
                   
 -- Generate C code for an LALR action table
-cgActionsInStates augCfg =
+cgActionsInStates augCfg lalrActTbl =
   do let nTabs = 1
      prTab nTabs
      putStrLn "switch( top() )"
@@ -183,7 +183,7 @@ cgActionsInStates augCfg =
   where
     CFG start prules     = augCfg
     iprules              = zip [0..] prules 
-    (_,_,_,lalrActTbl,_) = calcLALRParseTable augCfg
+    -- (_,_,_,lalrActTbl,_) = calcLALRParseTable augCfg
     
     eqState (x1,_,_) (x2,_,_) = x1 == x2
      

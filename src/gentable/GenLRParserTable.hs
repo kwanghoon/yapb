@@ -14,13 +14,14 @@
 --  * closure g4 [Item (ProductionRule "S'" [Nonterminal "S"]) 0 [Symbol (Terminal "")]]
 --------------------------------------------------------------------------------
 
-module GenLRParserTable where
+module GenLRParserTable (_main) where
 
 import Data.List
 import Data.Maybe
 import System.Environment (getArgs)
 
 import CFG
+import Attrs
 import ParserTable
 import CmdArgs 
 
@@ -50,17 +51,28 @@ _main = do
     f h file = do
       grammar <- readFile file
       -- putStrLn grammar
-      let cfg = read grammar :: CFG
+      let (cfg,tokenAttrs,prodRuleAttrs) =
+            read grammar :: (CFG, TokenAttrs, ProdRuleAttrs)
 
-      prParseTable stdout $ (\(a1,a2,a3,a4,a5)->(a1,a2,a3,a4)) (calcEfficientLALRParseTable cfg)
+      let (items, prules, actTbl, gtTbl, conflictsResolved)
+            = calcEfficientLALRParseTable cfg tokenAttrs
+                 (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
+
+      prConflictsResolved conflictsResolved
+
+      prParseTable stdout (items, prules, actTbl, gtTbl)
 
     writeParseTable file prod_rule action_tbl goto_tbl =
       do
         grammar <- readFile file
-        let cfg = read grammar :: CFG
-        let (items, prules, actTbl, gtTbl) =
-              (\(a1,a2,a3,a4,a5)->(a1,a2,a3,a4))
-                (calcEfficientLALRParseTable cfg) 
+        let (cfg,tokenAttrs,prodRuleAttrs) =
+              read grammar :: (CFG, TokenAttrs, ProdRuleAttrs)
+              
+        let (items, prules, actTbl, gtTbl, conflictsResolved)
+              = calcEfficientLALRParseTable cfg tokenAttrs
+                   (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
+
+        prConflictsResolved conflictsResolved
 
         h_pr <- openFile prod_rule WriteMode
         h_acttbl <- openFile action_tbl WriteMode 
@@ -74,8 +86,28 @@ _main = do
         hClose h_acttbl 
         hClose h_gototbl
 
-__main g = do
-  prParseTable stdout $ (\(a1,a2,a3,a4,a5)->(a1,a2,a3,a4)) (calcEfficientLALRParseTable g)
+setProdRuleAttrs cfg _tokenAttrs _initProdRuleAttrs =
+  ProdRuleAttrs $
+    concat [ getAssocPrec no rhs | (no, ProductionRule _ rhs) <- zip [0..] prodRules ]
+  where
+    CFG ss prodRules = cfg
+    TokenAttrs tokenAttrs = _tokenAttrs
+    ProdRuleAttrs initProdRuleAttrs = _initProdRuleAttrs
+
+    getAssocPrec no rhs =
+      case [ (assoc,prec) | (no',(assoc,prec)) <- initProdRuleAttrs, no==no' ] of
+        ((assoc,prec):_) -> [ (no, (assoc,prec)) ]
+        [] -> findRightmostTerminal no (reverse rhs)
+
+    findRightmostTerminal no [] = []
+    findRightmostTerminal no (Nonterminal _ : rhs) = findRightmostTerminal no rhs
+    findRightmostTerminal no (Terminal tok : rhs) =
+      case [ (assoc,prec) | (tok', (assoc,prec)) <- tokenAttrs, tok==tok' ] of
+        ((assoc,prec):_) -> [ (no, (assoc,prec)) ]
+        [] -> []  
+
+-- __main g = do
+--   prParseTable stdout $ (\(a1,a2,a3,a4,a5)->(a1,a2,a3,a4)) (calcEfficientLALRParseTable g)
 
 -- __mainDebug g = do
 --   let (_,_,_,_,(items,lkhtbl1,splk',lkhtbl2,gotos)) = calcEfficientLALRParseTable g
@@ -382,14 +414,14 @@ goto augCfg items x = closure augCfg itemsOverX
 
 
 --------------------------------------------------------------------------------
--- Canonical LR Parser
+-- Efficient LALR Parser
 --------------------------------------------------------------------------------
 sharp = Terminal "#"  -- a special terminal symbol
 sharpSymbol = Symbol sharp
 
 -- calcEfficientLALRParseTable :: AUGCFG -> (Itemss, ProductionRules, ActionTable, GotoTable)
-calcEfficientLALRParseTable augCfg = 
-  (lr1items, prules, actionTable, gotoTable, ()) -- (lr0items, splk, splk'', prop, lr0GotoTable))
+calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs = 
+  (lr1items, prules, actionTable, gotoTable, conflictsResolved) -- (lr0items, splk, splk'', prop, lr0GotoTable))
   where
     CFG _S' prules = augCfg 
     lr0items = calcLR0Items augCfg 
@@ -410,7 +442,8 @@ calcEfficientLALRParseTable augCfg =
 
     lr1items = map (closure augCfg) lr1kernelitems
 
-    (actionTable, gotoTable) = calcEfficientLALRActionGotoTable augCfg lr1items
+    (actionTable, gotoTable, conflictsResolved) =
+      calcEfficientLALRActionGotoTable augCfg lr1items tokenAttrs prodRuleAttrs
 
 calcLr0GotoTable augCfg lr0items =
   nub [ (from, h, to)
@@ -466,7 +499,8 @@ calcProp augCfg lr0kernelitems lr0GotoTable =
   , prule1 == prule2
   ]     
 
-calcEfficientLALRActionGotoTable augCfg items = (actionTable, gotoTable)
+calcEfficientLALRActionGotoTable augCfg items (TokenAttrs tokenAttrs) (ProdRuleAttrs prodRuleAttrs) =
+  (actionTable, gotoTable, conflictsResolved)
   where
     CFG _S' prules = augCfg
     -- items = calcLR1Items augCfg
@@ -475,39 +509,102 @@ calcEfficientLALRActionGotoTable augCfg items = (actionTable, gotoTable)
     -- terminalSyms    = [Terminal x    | Terminal x    <- syms]
     -- nonterminalSyms = [Nonterminal x | Nonterminal x <- syms]
     
-    f :: [(ActionTable,GotoTable)] -> (ActionTable, GotoTable)
-    f l = case unzip l of (fst,snd) -> (g [] (concat fst), h [] (concat snd))
+    f :: [(ActionTable,GotoTable)] -> (ActionTable, GotoTable, ConflictsResolved)
+    -- f l = case unzip l of (fst,snd) -> (g [] (concat fst), h [] (concat snd))
+    f l = case unzip l of (fst,snd) ->
+                            let (actTbl, conflictsResolved) = g1 (concat fst)
+                                gotoTbl = h [] (concat snd)
+                            in  (actTbl, gotoTbl, conflictsResolved)
                           
     g actTbl [] = actTbl
     g actTbl ((i,x,a):triples) = 
-      let bs = [a' == a | (i',x',a') <- actTbl, i' == i && x' == x ] in
+      let bs = [ (i',x',a') | (i',x',a') <- actTbl, i' == i && x' == x ] in
       if length bs == 0
       then g (actTbl ++ [(i,x,a)]) triples
-      else if and bs 
-           then g actTbl triples 
-           else error ("Conflict: " 
-                       ++ show (i,x,a) 
-                       ++ " " 
-                       ++ show actTbl)
-                
+      else if and [ a == a' | (_,_,a') <- bs ]
+           then g actTbl triples
+           else error $ "Conflict: " ++ show (i,x,a) ++ " " ++ show bs
+
+    g1 :: ActionTable -> (ActionTable, ConflictsResolved)
+    g1 actTbl = gResolve . squeeze . groupBy eqStateLookahead . sortBy cmpStateLookahead $ actTbl
+      where
+        squeeze xss = map (nubBy (\(_,_,a1) (_,_,a2) -> a1==a2)) xss
+        
+        gResolve :: [ActionTable] -> (ActionTable, ConflictsResolved)
+        gResolve []           = ([], [])
+        gResolve ([]:theRest) = error "gResolve: empty group" -- Will never happen
+        gResolve ([(i,x,a)]:theRest)               =
+          let (actTbl',conflictsResolved)  = gResolve theRest 
+          in  ((i,x,a) : actTbl', conflictsResolved)
+        gResolve ([t1,t2]:theRest) =    -- conflict resolution
+          let (ixa, conflictResolved)      = resolve t1 t2
+              (actTbl', conflictsResolved) = gResolve theRest
+          in  (ixa : actTbl', conflictResolved : conflictsResolved)
+        gResolve ixaList = error $ "Conflict: " ++ show (head ixaList)
+
+        eqStateLookahead (i1,x1,a1) (i2,x2,a2) = i1==i2 && x1==x2
+
+        cmpStateLookahead (i1,x1,a1) (i2,x2,a2) =
+          if i1<i2 || i1==i2 && x1<x2 then LT
+          else if i1==i2 && x1==x2 then EQ
+          else GT
+
+        -- Precondition: i1==i2 && x1==x2
+        resolve t1@(i1,x1,Reduce p1) t2@(i2,x2,Reduce p2) =
+          if p1 < p2
+            then (t1, (i1,x1,Reduce p1, Reduce p2))
+            else (t2, (i2,x2,Reduce p2, Reduce p1))
+                    
+        resolve t1@(i1,x1,Shift tk) t2@(i2,x2,Reduce p) =
+          case (getAssocPrecToken x1, getAssocPrecProdRule p) of
+            -- By the extended resolution
+            (Just (assoc1, p1), Just (assoc2, p2)) ->  
+              if p2 > p1                                -- if prec(rule) is higher than prec(lookahead)
+              then (t2, (i2,x2,Reduce p, Shift tk))     -- then do reduce
+              else if p2 == p1 && assoc2 == Attrs.Left  -- else if the same prec && assoc(rule) is Left
+                      then (t2, (i2,x2,Reduce p, Shift tk))    -- then do reduce
+                      else (t1, (i1,x1,Shift tk, Reduce p))    -- else do shift
+
+            -- By the default resolution
+            _ ->  
+              (t1, (i1,x1,Shift tk, Reduce p))
+          
+        resolve t1@(i1,x1,Reduce p) t2@(i2,x2,Shift tk) = resolve t2 t1
+          
+        resolve t1@(i1,x1,a1) t2@(i2,x2,a2) =
+          error $ "Conflict: unexpected actions: state "
+                     ++ show i1 ++ show " token " ++ show x1 ++ " : "
+                     ++ show a1 ++ " vs " ++ show a2
+
+        getAssocPrecProdRule p1 =
+          case [ (assoc,prec) | (p,(assoc,prec)) <- prodRuleAttrs, p==p1 ] of
+            [] -> Nothing
+            ((assoc,p1'):_) -> Just (assoc,p1')
+
+        getAssocPrecToken (Symbol (Terminal s)) =
+          case [ (assoc,prec) | (tok,(assoc,prec)) <- tokenAttrs, tok==s ] of
+            [] -> Nothing
+            ((assoc,prec):_) -> Just (assoc,prec)
+        
+        getAssocPrecToken (Epsilon) = Nothing
+        
+        getAssocPrecToken (EndOfSymbol) = Nothing
+    
     h :: GotoTable -> GotoTable -> GotoTable
     h gtTbl [] = gtTbl
     h gtTbl ((i,x,j):triples) =
-      let bs = [j' == j | (i',x',j') <- gtTbl, i' == i && x' == x ] in
+      let bs = [ (i',x',j') | (i',x',j') <- gtTbl, i' == i && x' == x ] in
       if length bs == 0
       then h (gtTbl ++ [(i,x,j)]) triples
-      else if and bs
+      else if and [ j' == j | (_,_,j') <- bs]
            then h gtTbl triples
-           else error ("Conflict: "
-                       ++ show (i,x,j)
-                       ++ " "
-                       ++ show gtTbl)
+           else error $ "Conflict: " ++ show (i,x,j) ++ " " ++ show bs
     
-    mkLr0 (Item prule dot _) = Item prule dot [] 
+    mkLr0 (Item prule dot _) = Item prule dot []
 
     itemsInLr0 = map (nub . map mkLr0) items 
 
-    (actionTable, gotoTable) = f
+    (actionTable, gotoTable, conflictsResolved) = f
       [ if ys' == []
         then if y == _S' && a == EndOfSymbol
              then ([(from, a, Accept)   ], []) 
@@ -649,28 +746,28 @@ calcLR1ActionGotoTable augCfg items = (actionTable, gotoTable)
                           
     g actTbl [] = actTbl
     g actTbl ((i,x,a):triples) = 
-      let bs = [a' == a | (i',x',a') <- actTbl, i' == i && x' == x ] in
+      let bs = [ (i',x',a') | (i',x',a') <- actTbl, i' == i && x' == x ] in
       if length bs == 0
       then g (actTbl ++ [(i,x,a)]) triples
-      else if and bs 
+      else if and [ a' == a | (_,_,a') <- bs ]
            then g actTbl triples 
            else error ("Conflict: " 
                        ++ show (i,x,a) 
                        ++ " " 
-                       ++ show actTbl)
+                       ++ show bs)
                 
     h :: GotoTable -> GotoTable -> GotoTable
     h gtTbl [] = gtTbl
     h gtTbl ((i,x,j):triples) =
-      let bs = [j' == j | (i',x',j') <- gtTbl, i' == i && x' == x ] in
+      let bs = [ (i',x',j') | (i',x',j') <- gtTbl, i' == i && x' == x ] in
       if length bs == 0
       then h (gtTbl ++ [(i,x,j)]) triples
-      else if and bs
+      else if and [ j' == j | (_,_,j') <- bs]
            then h gtTbl triples
            else error ("Conflict: "
                        ++ show (i,x,j)
                        ++ " "
-                       ++ show gtTbl)
+                       ++ show bs)
 
     (actionTable, gotoTable) = f
       [ if ys' == []
@@ -716,9 +813,19 @@ prStates h [] = return ()
 prStates h (is:iss) =
   do hPutStrLn h (show is)
      prStates h iss
+
+prConflictsResolved conflictsResolved =
+  do mapM_ (\(s,l,a1,a2) ->
+             do putStr "Conflict resolved:"
+                putStr $ " State " ++ show s
+                putStr $ " on " ++ show l
+                putStr $ " : " ++ show a1
+                putStrLn $ " > " ++ show a2
+           ) conflictsResolved
+
      
 --------------------------------------------------------------------------------
--- LALR Parser 
+-- LALR Parser (See an efficient one abover)
 --------------------------------------------------------------------------------
 
 calcLALRParseTable :: AUGCFG -> 

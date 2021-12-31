@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7de4872267f5bf241c30cdc4c615b3cb47c9fb14b37d27412c8b1259067ad563
+-- hash: 0d50f6d3962c310b2c8af1010deadca38c600bdb1dee843ae15069937dba5242
 
 name:           yapb
 version:        0.1.4
@@ -30,6 +30,7 @@ source-repository head
 library
   exposed-modules:
       CFG
+      Attrs
       CmdArgs
       ParserTable
       GenLRParserTable
@@ -62,6 +63,27 @@ library
     , network >=3.1.1 && <3.2
     , process >=1.6.5 && <1.7
     , regex-tdfa >=1.3.1 && <1.4
+  default-language: Haskell2010
+
+executable ambiguous-exe
+  main-is: Main.hs
+  other-modules:
+      Lexer
+      Parser
+      ParserSpec
+      Run
+      Token
+      Expr
+      Paths_yapb
+  hs-source-dirs:
+      app/ambiguous
+      app/ambiguous/ast
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , hspec
+    , regex-tdfa
+    , yapb
   default-language: Haskell2010
 
 executable conv-exe

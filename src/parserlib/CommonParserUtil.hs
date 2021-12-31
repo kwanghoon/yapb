@@ -8,6 +8,7 @@ module CommonParserUtil
   , LexError(..), ParseError(..)
   , successfullyParsed, handleLexError, handleParseError) where
 
+import Attrs
 import Terminal
 import TokenInterface
 
@@ -35,6 +36,13 @@ import System.Directory
 import Control.Exception
 import System.IO.Error hiding (catch)
 
+-- | Common parser utilities:
+-- |
+-- |  1. A parser(and lexer) specification interface to the parser generator
+-- |  2. An automation executor
+-- |  3. A generator for syntax completion candidates
+-- | 
+-- |  (TODO: Need to modularize these utilities)
 
 -- Lexer Specification
 type RegExpStr    = String
@@ -46,13 +54,28 @@ data LexerSpec token =
               lexerSpecList :: LexerSpecList token
             }
 
--- Parser Specification
-type ProdRuleStr = String
-type ParseFun token ast = Stack token ast -> ast
+-- | Token precedence and associativity: TokenPrecAssoc token
+-- |
+-- |    e.g., [ (Nonassoc, [ "integer_number" ])
+-- |          , (Left,     [ "+", "-" ])
+-- |          , (Left,     [ "*", "/" ])
+-- |          , (Right,    [ "UMINUS" ])   -- placeholder
+-- |          ]
 
-type ParserSpecList token ast = [(ProdRuleStr, ParseFun token ast)]
+type TokenPrecAssoc = [(Associativity, [TokenOrPlaceholder])]
+
+-- | Parser Specification
+-- |     A -> rhs %prec <token> {action}
+
+type ProdRuleStr = String                          -- A -> rhs
+type ParseFun token ast = Stack token ast -> ast   -- {action}
+type ProdRulePrec = Maybe TokenOrPlaceholder       -- %prec <token>
+type ProdRulePrecs = [ProdRulePrec]
+
+type ParserSpecList token ast = [(ProdRuleStr, ParseFun token ast, ProdRulePrec)]
 data ParserSpec token ast =
   ParserSpec { startSymbol    :: String,
+               tokenPrecAssoc :: TokenPrecAssoc,
                parserSpecList :: ParserSpecList token ast,
                baseDir        :: String,   -- ex) ./
                actionTblFile  :: String,   -- ex) actiontable.txt
@@ -61,6 +84,32 @@ data ParserSpec token ast =
                parserSpecFile :: String,   -- ex) mygrammar.grm
                genparserexe   :: String    -- ex) genlrparse-exe
              }
+
+toTokenAttrs :: TokenPrecAssoc -> TokenAttrs
+toTokenAttrs tokenSpec = TokenAttrs (toTokenAttrs' tokenSpec 1)
+  where
+    toTokenAttrs' [] n = []
+    toTokenAttrs' ((assoc, tokenPlaceholderList):tokenSpec) n =
+      [ (tokenOrPlaceholder, (assoc, n)) | tokenOrPlaceholder <- tokenPlaceholderList ]
+        ++ toTokenAttrs' tokenSpec (n+1)
+
+toProdRuleAttrs :: TokenAttrs -> ProdRulePrecs -> ProdRuleAttrs
+toProdRuleAttrs tokenAttrs prodRulePrecs = ProdRuleAttrs (toProdRuleAttrs' prodRulePrecs 0)
+  where
+    TokenAttrs tokenAttrs' = tokenAttrs
+    
+    toProdRuleAttrs' [] n = []
+    
+    toProdRuleAttrs' (Nothing:prodRulePrecs) n =
+      toProdRuleAttrs' prodRulePrecs (n+1)
+      
+    toProdRuleAttrs' ((Just tokenOrPlaceholder):prodRulePrecs) n =
+      case [ (assoc, prec)
+           | (tokenOrPlaceholder', (assoc, prec)) <- tokenAttrs'
+           , tokenOrPlaceholder==tokenOrPlaceholder' ] of
+        [] -> error $ "The production rule #" ++ show n ++ " refers to "
+                        ++ tokenOrPlaceholder ++ " but not found"
+        ((assoc,prec):_) -> (n,(assoc,prec)) : toProdRuleAttrs' prodRulePrecs (n+1)
 
 -- Specification
 data Spec token ast =
@@ -190,7 +239,7 @@ parsingHaskell :: (TokenInterface token, Typeable token, Typeable ast, Show toke
            Bool -> ParserSpec token ast -> [Terminal token] -> Maybe token -> IO ast
 parsingHaskell flag parserSpec terminalList haskellOption = do
   -- 1. Save the production rules in the parser spec (Parser.hs).
-  writtenBool <- saveProdRules specFileName sSym pSpecList
+  writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr
 
   -- 2. If the grammar file is written,
   --    run the following command to generate prod_rules/action_table/goto_table files.
@@ -215,18 +264,27 @@ parsingHaskell flag parserSpec terminalList haskellOption = do
                        am_prodRules=prodRules,
                        am_parseFuns=pFunList })
                      terminalList haskellOption
-            -- putStrLn "done." -- It was for the interafce with Java-version RPC calculus interpreter.
+            -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
             return ast
 
   where
-    specFileName      = parserSpecFile parserSpec
-    grammarFileName   = grammarFile    parserSpec
-    actionTblFileName = actionTblFile  parserSpec
-    gotoTblFileName   = gotoTblFile    parserSpec
+    specFileName      = parserSpecFile parserSpec  -- e.g., mygrammar.grm
+    grammarFileName   = grammarFile    parserSpec  --       prod_rules.txt
+    actionTblFileName = actionTblFile  parserSpec  --       action_table.txt
+    gotoTblFileName   = gotoTblFile    parserSpec  --       goto_table.txt 
     
-    sSym      = startSymbol parserSpec
-    pSpecList = map fst (parserSpecList parserSpec)
-    pFunList  = map snd (parserSpecList parserSpec)
+    sSym          = startSymbol parserSpec
+    tokenAttrList = tokenPrecAssoc parserSpec
+
+    tokenAttrs    = toTokenAttrs tokenAttrList
+    tokenAttrsStr = show tokenAttrs
+    
+    pSpecList = map (\(f,s,t)->f) (parserSpecList parserSpec)
+    pFunList  = map (\(f,s,t)->s) (parserSpecList parserSpec)
+    pPrecList = map (\(f,s,t)->t) (parserSpecList parserSpec)
+
+    prodRuleAttrs = toProdRuleAttrs tokenAttrs pPrecList
+    prodRuleAttrsStr = show prodRuleAttrs
 
     generateAutomaton = do
       exitCode <- rawSystem "stack"
