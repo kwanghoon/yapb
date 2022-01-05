@@ -438,8 +438,8 @@ calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
      -- putStrLn "lr0kernelitems:"
      -- prItems stdout lr0kernelitems
 
-     -- putStrLn "splk':"
-     -- mapM_ putStrLn $ map show splk'
+     -- putStrLn "splk:"
+     -- mapM_ putStrLn $ map show splk
      -- (lr0items, splk, splk'', prop, lr0GotoTable))
      return (lr1items, prules, actionTable, gotoTable, conflictsResolved) 
   where
@@ -455,9 +455,10 @@ calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
 
     lr0GotoTable = calcLr0GotoTable augCfg lr0items
 
-    splk = (Item (head prules) 0 [], 0, [EndOfSymbol]) : (map (\(a1,a2,a3,a4)->(a1,a2,a3)) splk')
-    splk' = calcSplk augCfg lr0kernelitems lr0GotoTable
-    splk'' = map (\(a1,a2,a3,a4)->a4) splk'
+    -- splk = (Item (head prules) 0 [], 0, [EndOfSymbol]) : (map (\(a1,a2,a3,a4)->(a1,a2,a3)) splk')
+    splk = (Item (head prules) 0 [], 0, [EndOfSymbol]) : calcSplk augCfg lr0kernelitems lr0GotoTable
+    -- splk' = calcSplk augCfg lr0kernelitems lr0GotoTable
+    -- splk'' = map (\(a1,a2,a3,a4)->a4) splk'
     prop = calcProp augCfg lr0kernelitems lr0GotoTable
 
     lr1kernelitems = computeLookaheads splk prop lr0kernelitems
@@ -484,9 +485,11 @@ calcSplk
   :: CFG
      -> Itemss
      -> [(Int, Symbol, Int)]
-     -> [(Item, Int, [ExtendedSymbol], (Int, Int, Item, Items, Item, Item))]  
+   --  -> [(Item, Int, [ExtendedSymbol], (Int, Int, Item, Items, Item, Item))]  
+     -> [(Item, Int, [ExtendedSymbol])]  
 calcSplk augCfg lr0kernelitems lr0GotoTable = 
-  [ (Item prule2 dot2 [], toIndex, lookahead1, (fromIndex, toIndex, item0, lr1items, item1, item2)) 
+  -- [ (Item prule2 dot2 [], toIndex, lookahead1, (fromIndex, toIndex, item0, lr1items, item1, item2)) 
+  [ (Item prule2 dot2 [], toIndex, lookahead1)
   | (fromIndex, lr0kernelitem) <- zip [0..] lr0kernelitems  -- take item for each LR(0) kernels
   , item0@(Item prule0 dot0 _) <- lr0kernelitem 
   
