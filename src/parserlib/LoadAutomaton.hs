@@ -3,6 +3,7 @@ module LoadAutomaton where
 import AutomatonType
 import SaveProdRules(tokenizeLhs)
 import System.IO
+import Text.Read (readMaybe)
 
 loadAutomaton :: String -> String -> String
               -> IO (ActionTable, GotoTable, ProdRules)
@@ -28,7 +29,9 @@ tokenizeStateNumInAction str =
     [("", therest)] -> return []
     [(stateNum, therest)] -> do
       (terminal, action, actTbl) <- tokenizeTerminalInAction therest
-      return $ ((read stateNum :: Int, terminal), action) : actTbl
+      case readMaybe stateNum :: Maybe Int of
+        Just stateNum_i -> return $ ((stateNum_i, terminal), action) : actTbl
+        Nothing -> error $ "[tokenizeStateNumInAction] Unexpected state number\n" ++ show stateNum
 
 tokenizeTerminalInAction :: String -> IO (String, Action, ActionTable)
 tokenizeTerminalInAction str =

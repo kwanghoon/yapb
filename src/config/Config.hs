@@ -1,5 +1,6 @@
 module Config where
 
+import Text.Read (readMaybe)
 import Data.Maybe
 import System.IO
 import System.Directory
@@ -22,7 +23,9 @@ readConfig =
   do exists <- doesFileExist configFileName
      if exists
        then do text <- readFile configFileName
-               return (Just $ (read text :: Configuration))
+               case  readMaybe text :: Maybe Configuration of
+                 Just config_text -> return $ Just config_text
+                 Nothing -> error $ "readConfig: unexpected configuration\n" ++ show text
        else return Nothing
 
      

@@ -1,5 +1,6 @@
 module SaveProdRules where
 
+import Text.Read (readMaybe)
 import Data.Hashable
 import System.IO
 import System.Directory
@@ -81,11 +82,15 @@ writeOnceWithHash fileName text = do
 
     True  -> do
       existingHashStr <- readFile hashFileName
-      
-      case newHash == (read existingHashStr :: Int) of
-        True -> return False
-        False -> do
-          writeFile fileName text
-          writeFile hashFileName (show newHash)
-          return True
-    
+
+      case readMaybe existingHashStr :: Maybe Int of
+        Just existingHashStr_i ->
+          
+          case newHash == (read existingHashStr :: Int) of
+            True -> return False
+            False -> do
+              writeFile fileName text
+              writeFile hashFileName (show newHash)
+              return True
+
+        Nothing -> error $ "[writeOnceWithHash] unexpected hash: " ++ show existingHashStr

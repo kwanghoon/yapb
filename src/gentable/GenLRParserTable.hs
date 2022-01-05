@@ -16,6 +16,7 @@
 
 module GenLRParserTable (_main) where
 
+import Text.Read (readMaybe)
 import Data.List
 import Data.Maybe
 import System.Environment (getArgs)
@@ -52,7 +53,9 @@ _main = do
       grammar <- readFile file
       -- putStrLn grammar
       let (cfg,tokenAttrs,prodRuleAttrs) =
-            read grammar :: (CFG, TokenAttrs, ProdRuleAttrs)
+            case readMaybe grammar :: Maybe (CFG, TokenAttrs, ProdRuleAttrs) of
+              Just ctp -> ctp
+              Nothing -> error $ "[GenLRParserTable:_main:f] unexpected cfg, token attrs, and prod rule attrs"
 
       let (items, prules, actTbl, gtTbl, conflictsResolved)
             = calcEfficientLALRParseTable cfg tokenAttrs
@@ -66,7 +69,9 @@ _main = do
       do
         grammar <- readFile file
         let (cfg,tokenAttrs,prodRuleAttrs) =
-              read grammar :: (CFG, TokenAttrs, ProdRuleAttrs)
+              case readMaybe grammar :: Maybe (CFG, TokenAttrs, ProdRuleAttrs) of
+                Just cfp -> cfp
+                Nothing -> error $ "[GenLRParserTable:writeParseTable] unexpected cfg, token attrs, and prod rule attrs"
               
         let (items, prules, actTbl, gtTbl, conflictsResolved)
               = calcEfficientLALRParseTable cfg tokenAttrs
