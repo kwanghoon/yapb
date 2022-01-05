@@ -8,7 +8,7 @@ import CFG
 saveProdRules :: String -> String -> [String] -> String -> String -> IO Bool
 saveProdRules fileName startSymbol prodRuleStrs tokenAttrs prodRuleAttrs = do
   writeOnceWithHash fileName
-    ("(" ++ grmStrLn ++ ",\n" ++ tokenAttrs ++ ",\n" ++ prodRuleAttrs ++ ")")
+    ("(" ++ grmStrLn ++ ",\n" ++ tokenAttrs ++ ",\n" ++ prodRuleAttrs ++ ")\n")
   where
     grmStr   = toCFG startSymbol prodRuleStrs
     grmStrLn = grmStr ++ "\n"

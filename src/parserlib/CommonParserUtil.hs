@@ -175,13 +175,18 @@ matchLexSpec :: TokenInterface token =>
                 Line -> Column -> LexerSpecList token -> String
              -> IO (String, String, Maybe token, String)
 matchLexSpec line col [] text = do
-  throw (CommonParserUtil.LexError line col text)
+  throw (CommonParserUtil.LexError line col (takeRet 0 text))
   -- putStr $ "No matching lexer spec at "
   -- putStr $ "Line " ++ show line
   -- putStr $ "Column " ++ show col
   -- putStr $ " : "
   -- putStr $ take 10 text
   -- exitWith (ExitFailure (-1))
+  where
+    takeRet n [] = ""
+    takeRet 0 ('\n':text) = '\n' : takeRet 0 text
+    takeRet n ('\n':text)  = ""
+    takeRet n (c:text) = c : (takeRet (n+1) text)
 
 matchLexSpec line col ((aSpec,tokenBuilder):lexerspec) text = do
   let (pre, matched, post) = text =~ aSpec :: (String,String,String)
