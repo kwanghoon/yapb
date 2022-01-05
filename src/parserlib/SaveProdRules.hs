@@ -86,11 +86,11 @@ writeOnceWithHash fileName text = do
       case readMaybe existingHashStr :: Maybe Int of
         Just existingHashStr_i ->
           
-          case newHash == (read existingHashStr :: Int) of
+          case newHash == existingHashStr_i of
             True -> return False
             False -> do
               writeFile fileName text
               writeFile hashFileName (show newHash)
               return True
 
-        Nothing -> error $ "[writeOnceWithHash] unexpected hash: " ++ show existingHashStr
+        Nothing -> error $ "[writeOnceWithHash] unexpected hash: " ++ existingHashStr

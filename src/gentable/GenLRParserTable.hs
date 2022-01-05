@@ -14,7 +14,7 @@
 --  * closure g4 [Item (ProductionRule "S'" [Nonterminal "S"]) 0 [Symbol (Terminal "")]]
 --------------------------------------------------------------------------------
 
-module GenLRParserTable (_main) where
+module GenLRParserTable {- (_main) -} where
 
 import Text.Read (readMaybe)
 import Data.List
@@ -55,10 +55,11 @@ _main = do
       let (cfg,tokenAttrs,prodRuleAttrs) =
             case readMaybe grammar :: Maybe (CFG, TokenAttrs, ProdRuleAttrs) of
               Just ctp -> ctp
-              Nothing -> error $ "[GenLRParserTable:_main:f] unexpected cfg, token attrs, and prod rule attrs"
+              Nothing -> error $ "[GenLRParserTable:_main:f] unexpected "
+                                    ++ "cfg, token attrs, and prod rule attrs"
 
-      let (items, prules, actTbl, gtTbl, conflictsResolved)
-            = calcEfficientLALRParseTable cfg tokenAttrs
+      (items, prules, actTbl, gtTbl, conflictsResolved)
+            <- calcEfficientLALRParseTable cfg tokenAttrs
                  (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
 
       prConflictsResolved conflictsResolved
@@ -71,10 +72,11 @@ _main = do
         let (cfg,tokenAttrs,prodRuleAttrs) =
               case readMaybe grammar :: Maybe (CFG, TokenAttrs, ProdRuleAttrs) of
                 Just cfp -> cfp
-                Nothing -> error $ "[GenLRParserTable:writeParseTable] unexpected cfg, token attrs, and prod rule attrs"
+                Nothing -> error $ "[GenLRParserTable:writeParseTable] unexpected "
+                                      ++ "cfg, token attrs, and prod rule attrs"
               
-        let (items, prules, actTbl, gtTbl, conflictsResolved)
-              = calcEfficientLALRParseTable cfg tokenAttrs
+        (items, prules, actTbl, gtTbl, conflictsResolved)
+              <- calcEfficientLALRParseTable cfg tokenAttrs
                    (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
 
         prConflictsResolved conflictsResolved
@@ -424,13 +426,28 @@ goto augCfg items x = closure augCfg itemsOverX
 sharp = Terminal "#"  -- a special terminal symbol
 sharpSymbol = Symbol sharp
 
--- calcEfficientLALRParseTable :: AUGCFG -> (Itemss, ProductionRules, ActionTable, GotoTable)
-calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs = 
-  (lr1items, prules, actionTable, gotoTable, conflictsResolved) -- (lr0items, splk, splk'', prop, lr0GotoTable))
+calcEfficientLALRParseTable
+  :: CFG
+     -> TokenAttrs
+     -> ProdRuleAttrs
+     -> IO ([Items], [ProductionRule]
+           , ParserTable.ActionTable, ParserTable.GotoTable
+           , ConflictsResolved)
+calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
+  do
+     -- putStrLn "lr0kernelitems:"
+     -- prItems stdout lr0kernelitems
+
+     -- putStrLn "splk':"
+     -- mapM_ putStrLn $ map show splk'
+     -- (lr0items, splk, splk'', prop, lr0GotoTable))
+     return (lr1items, prules, actionTable, gotoTable, conflictsResolved) 
   where
-    CFG _S' prules = augCfg 
+    CFG _S' prules = augCfg
+    
     lr0items = calcLR0Items augCfg 
     lr0kernelitems = map (filter (isKernel (startNonterminal augCfg))) lr0items
+    
     syms = (\\) (symbols augCfg) [Nonterminal _S']
 
     terminalSyms    = [Terminal x    | Terminal x    <- syms]
@@ -450,6 +467,7 @@ calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
     (actionTable, gotoTable, conflictsResolved) =
       calcEfficientLALRActionGotoTable augCfg lr1items tokenAttrs prodRuleAttrs
 
+calcLr0GotoTable :: CFG -> [[Item]] -> [(Int, Symbol, Int)]
 calcLr0GotoTable augCfg lr0items =
   nub [ (from, h, to)
       | item1 <- lr0items
@@ -461,7 +479,12 @@ calcLr0GotoTable augCfg lr0items =
       , let to = indexItem "lr0GotoTable(to)" lr0items (goto augCfg item1 h)
       , ys' /= []
       ] 
-    
+
+calcSplk
+  :: CFG
+     -> Itemss
+     -> [(Int, Symbol, Int)]
+     -> [(Item, Int, [ExtendedSymbol], (Int, Int, Item, Items, Item, Item))]  
 calcSplk augCfg lr0kernelitems lr0GotoTable = 
   [ (Item prule2 dot2 [], toIndex, lookahead1, (fromIndex, toIndex, item0, lr1items, item1, item2)) 
   | (fromIndex, lr0kernelitem) <- zip [0..] lr0kernelitems  -- take item for each LR(0) kernels
@@ -483,6 +506,8 @@ calcSplk augCfg lr0kernelitems lr0GotoTable =
   , prule1 == prule2
   ]  
 
+calcProp
+  :: CFG -> Itemss -> [(Int, Symbol, Int)] -> [(Item, Int, Item, Int)]
 calcProp augCfg lr0kernelitems lr0GotoTable = 
   [ (Item prule0 dot0 [], fromIndex, Item prule2 dot2 [], toIndex) 
   | (fromIndex, lr0kernelitem) <- zip [0..] lr0kernelitems  -- take item for each LR(0) kernels
@@ -504,6 +529,9 @@ calcProp augCfg lr0kernelitems lr0GotoTable =
   , prule1 == prule2
   ]     
 
+calcEfficientLALRActionGotoTable
+  :: CFG -> Itemss -> TokenAttrs -> ProdRuleAttrs
+     -> (ParserTable.ActionTable, ParserTable.GotoTable, ConflictsResolved)
 calcEfficientLALRActionGotoTable augCfg items (TokenAttrs tokenAttrs) (ProdRuleAttrs prodRuleAttrs) =
   (actionTable, gotoTable, conflictsResolved)
   where

@@ -31,7 +31,7 @@ tokenizeStateNumInAction str =
       (terminal, action, actTbl) <- tokenizeTerminalInAction therest
       case readMaybe stateNum :: Maybe Int of
         Just stateNum_i -> return $ ((stateNum_i, terminal), action) : actTbl
-        Nothing -> error $ "[tokenizeStateNumInAction] Unexpected state number\n" ++ show stateNum
+        Nothing -> error $ "[tokenizeStateNumInAction] Unexpected state number\n" ++ stateNum
 
 tokenizeTerminalInAction :: String -> IO (String, Action, ActionTable)
 tokenizeTerminalInAction str =
@@ -65,7 +65,11 @@ tokenizeShiftReduceStateNumInAction str fn =
     [("", therest)] -> fail "No shift/reduce state number found (2)"
     [(stateNum, therest)] -> do
       actTbl <- tokenizeStateNumInAction therest
-      return (fn (read stateNum :: Int), actTbl)
+      case readMaybe stateNum :: Maybe Int of
+        Just stateNum_i -> return (fn stateNum_i, actTbl)
+        Nothing ->
+          error $ "[tokenizeShiftReduceStateNumInAction] unexpected state number:"
+                    ++ stateNum
       
 
 -- Load goto table
@@ -79,7 +83,10 @@ tokenizeStateNumInGoto str =
     [("", therest)] -> return []
     [(stateNum, therest)] -> do
       (nonterminal, toStateNum, actTbl) <- tokenizeNonterminalInGoto therest
-      return $ ((read stateNum :: Int, nonterminal), read toStateNum :: Int) : actTbl
+      case (readMaybe stateNum :: Maybe Int, readMaybe toStateNum :: Maybe Int) of
+        (Just stateNum_i, Just toStateNum_i) -> return $ ((stateNum_i, nonterminal), toStateNum_i) : actTbl
+        (_,_) -> error $ "[tokenizeStateNumInGoto] Unexpected state numbers: "
+                              ++ stateNum ++ " or " ++ toStateNum
 
 tokenizeNonterminalInGoto :: String -> IO (String, String, GotoTable)
 tokenizeNonterminalInGoto str =
@@ -112,7 +119,10 @@ tokenizeNumInProdRules str =
     [("", therest)] -> fail "No rule number found (2)"
     [(ruleNumStr, therest)] -> do
       (lhs, rhs) <- tokenizeColonInProdRules therest
-      return (read ruleNumStr :: Int, lhs, rhs)
+      case readMaybe ruleNumStr :: Maybe Int of
+        Just ruleNumStr_i -> return (ruleNumStr_i, lhs, rhs)
+        Nothing -> error $ "[tokenizeNumInProdRules] Unexpected rule number: "
+                              ++ ruleNumStr
 
 tokenizeColonInProdRules :: String -> IO (String, [String])
 tokenizeColonInProdRules str =
