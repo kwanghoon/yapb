@@ -735,9 +735,15 @@ collect'' :: Item -> Lookaheads -> [(Item, Lookaheads)] -> Lookaheads
 collect'' itemFrom lookaheads [] = lookaheads
 collect'' itemFrom lookaheads ((Item prule dot _, lks):itemlks) = 
   let Item pruleFrom dotFrom _ = itemFrom
-      lookaheads' = if pruleFrom == prule && dotFrom == dot 
-                    then lks else []
-  in collect'' itemFrom (lookaheads ++ lookaheads') itemlks
+      lookaheads' = if pruleFrom == prule && dotFrom == dot
+                    then accumLks lks lookaheads else lookaheads
+  in collect'' itemFrom lookaheads' itemlks
+
+-- | Eliminating space leak!
+accumLks [] lookaheads = lookaheads
+accumLks (lk:lks) lookaheads
+  | lk `elem` lookaheads = accumLks lks lookaheads
+  | otherwise = accumLks lks (lk : lookaheads)
 
 copy :: [(Int, [(Item, Lookaheads)])] -> [(Item, Int, Lookaheads)] -> (Bool, [(Int, [(Item, Lookaheads)])])
 copy iitemlkss [] = (False, iitemlkss)
