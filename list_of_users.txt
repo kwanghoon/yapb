@@ -6,3 +6,4 @@ Applications using YAPB
  - yapb/app/parser
  - sbparser
  - happy/hslexer
+ - c11parser

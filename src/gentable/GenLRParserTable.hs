@@ -14,7 +14,7 @@
 --  * closure g4 [Item (ProductionRule "S'" [Nonterminal "S"]) 0 [Symbol (Terminal "")]]
 --------------------------------------------------------------------------------
 
-module GenLRParserTable {- (_main) -} where
+module GenLRParserTable (_main) where
 
 import Text.Read (readMaybe)
 import Data.List
@@ -435,21 +435,18 @@ calcEfficientLALRParseTable
            , ConflictsResolved)
 calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
   do
-     putStrLn "lr0kernelitems:"
-     prItems stdout lr0kernelitems
+     -- putStrLn "lr0kernelitems:"
+     -- prItems stdout lr0kernelitems
 
-     putStrLn "splk:"
-     mapM_ putStrLn $ map show splk
-     
-     putStrLn "prop:"
-     mapM_ putStrLn $ map show prop
-
-     putStrLn "lr1kernelitems:"
-     prItems stdout lr1kernelitems
-     
      -- putStrLn "splk:"
      -- mapM_ putStrLn $ map show splk
-     -- (lr0items, splk, splk'', prop, lr0GotoTable))
+     
+     -- putStrLn "prop:"
+     -- mapM_ putStrLn $ map show prop
+
+     -- putStrLn "lr1kernelitems:"
+     -- prItems stdout lr1kernelitems
+     
      return (lr1items, prules, actionTable, gotoTable, conflictsResolved) 
   where
     CFG _S' prules = augCfg
