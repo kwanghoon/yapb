@@ -435,36 +435,52 @@ calcEfficientLALRParseTable
            , ConflictsResolved)
 calcEfficientLALRParseTable augCfg tokenAttrs prodRuleAttrs =
   do
-     -- putStrLn "lr0kernelitems:"
-     -- prItems stdout lr0kernelitems
+     putStrLn "lr0kernelitems:"
+     prItems stdout lr0kernelitems
 
+     putStrLn "splk:"
+     mapM_ putStrLn $ map show splk
+     
+     putStrLn "prop:"
+     mapM_ putStrLn $ map show prop
+
+     putStrLn "lr1kernelitems:"
+     prItems stdout lr1kernelitems
+     
      -- putStrLn "splk:"
      -- mapM_ putStrLn $ map show splk
      -- (lr0items, splk, splk'', prop, lr0GotoTable))
      return (lr1items, prules, actionTable, gotoTable, conflictsResolved) 
   where
     CFG _S' prules = augCfg
-    
-    lr0items = calcLR0Items augCfg 
-    lr0kernelitems = map (filter (isKernel (startNonterminal augCfg))) lr0items
-    
+
     syms = (\\) (symbols augCfg) [Nonterminal _S']
 
     terminalSyms    = [Terminal x    | Terminal x    <- syms]
     nonterminalSyms = [Nonterminal x | Nonterminal x <- syms]
 
+    -- | 1. Construction of LR(0) items (naively)
+    lr0items = calcLR0Items augCfg
+    
+    -- | 2. Extract LR(0) kernel items
+    lr0kernelitems = map (filter (isKernel (startNonterminal augCfg))) lr0items
+
+    -- | 3. Spontaneous lookaheads in an item at a state
     lr0GotoTable = calcLr0GotoTable augCfg lr0items
 
-    -- splk = (Item (head prules) 0 [], 0, [EndOfSymbol]) : (map (\(a1,a2,a3,a4)->(a1,a2,a3)) splk')
-    splk = (Item (head prules) 0 [], 0, [EndOfSymbol]) : calcSplk augCfg lr0kernelitems lr0GotoTable
-    -- splk' = calcSplk augCfg lr0kernelitems lr0GotoTable
-    -- splk'' = map (\(a1,a2,a3,a4)->a4) splk'
+    splk = (Item (head prules) 0 [], 0, [EndOfSymbol])
+             : calcSplk augCfg lr0kernelitems lr0GotoTable
+    
+    -- | 4. Lookaheads propagation from an item at a state to another item at another state
     prop = calcProp augCfg lr0kernelitems lr0GotoTable
 
+    -- | 5. Construction of LR(1) kernel items from splk, prop, and LR(0) kernel items
     lr1kernelitems = computeLookaheads splk prop lr0kernelitems
 
+    -- | 6. Construction of LR(1) items
     lr1items = map (closure augCfg) lr1kernelitems
 
+    -- | 7. Construction of LALR(1) table
     (actionTable, gotoTable, conflictsResolved) =
       calcEfficientLALRActionGotoTable augCfg lr1items tokenAttrs prodRuleAttrs
 
@@ -481,14 +497,8 @@ calcLr0GotoTable augCfg lr0items =
       , ys' /= []
       ] 
 
-calcSplk
-  :: CFG
-     -> Itemss
-     -> [(Int, Symbol, Int)]
-   --  -> [(Item, Int, [ExtendedSymbol], (Int, Int, Item, Items, Item, Item))]  
-     -> [(Item, Int, [ExtendedSymbol])]  
+calcSplk :: CFG -> Itemss -> [(Int, Symbol, Int)] -> [(Item, Int, [ExtendedSymbol])]
 calcSplk augCfg lr0kernelitems lr0GotoTable = 
-  -- [ (Item prule2 dot2 [], toIndex, lookahead1, (fromIndex, toIndex, item0, lr1items, item1, item2)) 
   [ (Item prule2 dot2 [], toIndex, lookahead1)
   | (fromIndex, lr0kernelitem) <- zip [0..] lr0kernelitems  -- take item for each LR(0) kernels
   , item0@(Item prule0 dot0 _) <- lr0kernelitem 
@@ -509,8 +519,7 @@ calcSplk augCfg lr0kernelitems lr0GotoTable =
   , prule1 == prule2
   ]  
 
-calcProp
-  :: CFG -> Itemss -> [(Int, Symbol, Int)] -> [(Item, Int, Item, Int)]
+calcProp :: CFG -> Itemss -> [(Int, Symbol, Int)] -> [(Item, Int, Item, Int)]
 calcProp augCfg lr0kernelitems lr0GotoTable = 
   [ (Item prule0 dot0 [], fromIndex, Item prule2 dot2 [], toIndex) 
   | (fromIndex, lr0kernelitem) <- zip [0..] lr0kernelitems  -- take item for each LR(0) kernels
@@ -658,85 +667,106 @@ calcEfficientLALRActionGotoTable augCfg items (TokenAttrs tokenAttrs) (ProdRuleA
       ]
 
 type Lookahead = [ExtendedSymbol] 
+type Lookaheads = [Lookahead] 
 type SpontaneousLookahead = [(Item, Int, Lookahead)]
 type PropagateLookahead = [(Item, Int, Item, Int)]
 
 computeLookaheads :: SpontaneousLookahead -> PropagateLookahead -> Itemss -> Itemss
 computeLookaheads splk prlk lr0kernelitemss = lr1kernelitemss
   where
+
+    -- | initial LR(1) kernel item lookaheads
+    initLr1kernelitemlkss =
+      initLr1Kernel splk (zip [0..length lr0kernelitemss] lr0kernelitemss)
+    
+    lr1kernelitemlkss = snd (unzip (prop prlk initLr1kernelitemlkss))
+    
     lr1kernelitemss = 
       [ concat [ if lookaheads == []  then [Item prule dot []]
           else [ Item prule dot lookahead | lookahead <- lookaheads ] 
           | (Item prule dot _, lookaheads) <- itemlks ]
       | itemlks <- lr1kernelitemlkss ]
 
-    initLr1kernelitemlkss = init (zip [0..] lr0kernelitemss)
-    lr1kernelitemlkss = snd (unzip (prop initLr1kernelitemlkss))
 
-    init [] = []
-    init ((index,items):iitemss) = (index, init' index items) : init iitemss 
-    
-    init' index [] = []
-    init' index (item:items) = (item, init'' index item [] splk ) : init' index items
+-- | inintial LR(1) items
+initLr1Kernel :: SpontaneousLookahead -> [(Int, Items)] -> [(Int, [(Item, Lookaheads)])]
+initLr1Kernel splk [] = []
+initLr1Kernel splk ((index,items):iitemss) =
+  (index, init' splk index items) : initLr1Kernel splk iitemss
 
-    init'' index itembase lookaheads [] = lookaheads 
-    init'' index itembase lookaheads ((splkitem,loc,lookahead):splkitems) = 
-      if index == loc && itembase == splkitem 
-      then init'' index itembase (lookaheads ++ [lookahead]) splkitems 
-      else init'' index itembase lookaheads splkitems 
+-- |  For each item at state index
+init' :: SpontaneousLookahead -> Int -> Items -> [(Item, Lookaheads)]
+init' splk index [] = []
+init' splk index (item:items) = (item, init'' index item [] splk ) : init' splk index items
 
-    prop ilr1kernelitemlkss = 
-      let itemToLks = collect ilr1kernelitemlkss prlk 
-          (changed, ilr1kernelitemlkss') = 
-             copy ilr1kernelitemlkss itemToLks
-      in  if changed then prop ilr1kernelitemlkss'
-          else ilr1kernelitemlkss
+-- |  For each spontaneous lookahead, add it to the item when matched.
+init'' :: Int -> Item -> Lookaheads -> [(Item, Int, Lookahead)] -> Lookaheads
+init'' index itembase lookaheads [] = lookaheads 
+init'' index itembase lookaheads ((splkitem,loc,lookahead):splkitems) = 
+  if index == loc && itembase == splkitem 
+  then init'' index itembase (lookaheads ++ [lookahead]) splkitems 
+  else init'' index itembase lookaheads splkitems 
 
-    collect ilr1kernelitemlkss [] = []
-    collect ilr1kernelitemlkss (itemFromTo:itemFromTos) = 
-      let (itemFrom, fromIndex, itemTo, toIndex) = itemFromTo 
-          lookaheads = collect' itemFrom fromIndex [] ilr1kernelitemlkss 
-      in (itemTo, toIndex, lookaheads) : collect ilr1kernelitemlkss itemFromTos
+-- | Propagating lookaheads until no change
+prop :: PropagateLookahead -> [(Int, [(Item, Lookaheads)])] -> [(Int, [(Item, Lookaheads)])]
+prop prlk ilr1kernelitemlkss = 
+  let itemToLks = collect ilr1kernelitemlkss prlk
+      (changed, ilr1kernelitemlkss') = 
+         copy ilr1kernelitemlkss itemToLks
+  in  if changed then prop prlk ilr1kernelitemlkss'
+      else ilr1kernelitemlkss
 
-    collect' itemFrom fromIndex lookaheads [] = lookaheads
-    collect' itemFrom fromIndex lookaheads ((index, iitemlks):iitemlkss) = 
-      if fromIndex == index 
-      then collect' itemFrom fromIndex 
-            (collect'' itemFrom lookaheads iitemlks) iitemlkss
-      else collect' itemFrom fromIndex lookaheads iitemlkss
+collect :: [(Int, [(Item, Lookaheads)])] -> PropagateLookahead -> [(Item, Int, Lookaheads)]
+collect ilr1kernelitemlkss [] = []
+collect ilr1kernelitemlkss (itemFromTo:itemFromTos) = 
+  let (itemFrom, fromIndex, itemTo, toIndex) = itemFromTo 
+      lookaheads = collect' itemFrom fromIndex [] ilr1kernelitemlkss 
+  in (itemTo, toIndex, lookaheads) : collect ilr1kernelitemlkss itemFromTos
 
-    collect'' itemFrom lookaheads [] = lookaheads
-    collect'' itemFrom lookaheads ((Item prule dot _, lks):itemlks) = 
-      let Item pruleFrom dotFrom _ = itemFrom
-          lookaheads' = if pruleFrom == prule && dotFrom == dot 
-                        then lks else []
-      in collect'' itemFrom (lookaheads ++ lookaheads') itemlks
-      
-    copy iitemlkss [] = (False, iitemlkss)
-    copy iitemlkss (itemToLookahead:itemToLookaheads) = 
-      let (changed1, iitemlkss1) = copy' iitemlkss itemToLookahead
-          (changed2, iitemlkss2) = copy iitemlkss1 itemToLookaheads 
-      in  (changed1 || changed2, iitemlkss2) 
+collect' :: Item -> Int -> Lookaheads -> [(Int, [(Item, Lookaheads)])] -> Lookaheads
+collect' itemFrom fromIndex lookaheads [] = lookaheads
+collect' itemFrom fromIndex lookaheads ((index, iitemlks):iitemlkss) = 
+  if fromIndex == index 
+  then collect' itemFrom fromIndex 
+        (collect'' itemFrom lookaheads iitemlks) iitemlkss
+  else collect' itemFrom fromIndex lookaheads iitemlkss
 
-    copy' [] itemToLookahead = (False, [])
-    copy' ((index,itemlks):iitemlkss) itemToLookahead = 
-      let (changed1, itemlks1) = copy'' index itemlks itemToLookahead 
-          (changed2, itemlkss2) = copy' iitemlkss itemToLookahead
-      in  (changed1 || changed2, (index,itemlks1):itemlkss2)
+collect'' :: Item -> Lookaheads -> [(Item, Lookaheads)] -> Lookaheads
+collect'' itemFrom lookaheads [] = lookaheads
+collect'' itemFrom lookaheads ((Item prule dot _, lks):itemlks) = 
+  let Item pruleFrom dotFrom _ = itemFrom
+      lookaheads' = if pruleFrom == prule && dotFrom == dot 
+                    then lks else []
+  in collect'' itemFrom (lookaheads ++ lookaheads') itemlks
 
-    copy'' index [] itemToLookahead = (False, [])
-    copy'' index (itemlk:itemlks) itemToLookahead = 
-      let (Item prule1 dot1 _, toIndex, lookahead1) = itemToLookahead
-          (Item prule2 dot2 l2, lookahead2) = itemlk  
-          lookahead2' = 
-            if prule1 == prule2 && dot1 == dot2 
-              && index == toIndex
-              && lookahead1 \\ lookahead2 /= []
-              then nub (lookahead1 ++ lookahead2) else lookahead2
-          changed1 = lookahead2' /= lookahead2
-          itemlk1 = (Item prule2 dot2 l2, lookahead2')
-          (changed2, itemlks2) = copy'' index itemlks itemToLookahead
-      in (changed1 || changed2, itemlk1:itemlks2) 
+copy :: [(Int, [(Item, Lookaheads)])] -> [(Item, Int, Lookaheads)] -> (Bool, [(Int, [(Item, Lookaheads)])])
+copy iitemlkss [] = (False, iitemlkss)
+copy iitemlkss (itemToLookahead:itemToLookaheads) = 
+  let (changed1, iitemlkss1) = copy' iitemlkss itemToLookahead
+      (changed2, iitemlkss2) = copy iitemlkss1 itemToLookaheads 
+  in  (changed1 || changed2, iitemlkss2) 
+
+copy' :: [(Int, [(Item, Lookaheads)])] -> (Item, Int, Lookaheads) -> (Bool, [(Int, [(Item, Lookaheads)])])
+copy' [] itemToLookahead = (False, [])
+copy' ((index,itemlks):iitemlkss) itemToLookahead = 
+  let (changed1, itemlks1) = copy'' index itemlks itemToLookahead 
+      (changed2, itemlkss2) = copy' iitemlkss itemToLookahead
+  in  (changed1 || changed2, (index,itemlks1):itemlkss2)
+
+copy'' :: Int -> [(Item, Lookaheads)] -> (Item, Int, Lookaheads) -> (Bool, [(Item, Lookaheads)])
+copy'' index [] itemToLookahead = (False, [])
+copy'' index (itemlk:itemlks) itemToLookahead = 
+  let (Item prule1 dot1 _, toIndex, lookahead1) = itemToLookahead
+      (Item prule2 dot2 l2, lookahead2) = itemlk  
+      lookahead2' = 
+        if prule1 == prule2 && dot1 == dot2 
+          && index == toIndex
+          && lookahead1 \\ lookahead2 /= []
+          then nub (lookahead1 ++ lookahead2) else lookahead2
+      changed1 = lookahead2' /= lookahead2
+      itemlk1 = (Item prule2 dot2 l2, lookahead2')
+      (changed2, itemlks2) = copy'' index itemlks itemToLookahead
+  in (changed1 || changed2, itemlk1:itemlks2) 
 
 
 prLkhTable [] = return ()
