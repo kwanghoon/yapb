@@ -4,6 +4,7 @@ Applications using YAPB
  - polyrpc
  - yapb/app/syntaxcompletion
  - yapb/app/parser
+ - yapb/app/ambiguous
  - sbparser
  - happy/hslexer
  - c11parser
