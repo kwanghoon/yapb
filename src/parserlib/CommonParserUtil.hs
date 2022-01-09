@@ -49,6 +49,7 @@ type RegExpStr    = String
 type LexFun token = String -> Maybe token 
 
 type LexerSpecList token  = [(RegExpStr, LexFun token)]
+
 data LexerSpec token =
   LexerSpec { endOfToken    :: token,
               lexerSpecList :: LexerSpecList token
@@ -67,12 +68,13 @@ type TokenPrecAssoc = [(Associativity, [TokenOrPlaceholder])]
 -- | Parser Specification
 -- |     A -> rhs %prec <token> {action}
 
-type ProdRuleStr = String                          -- A -> rhs
-type ParseFun token ast = Stack token ast -> ast   -- {action}
-type ProdRulePrec = Maybe TokenOrPlaceholder       -- %prec <token>
+type ProdRuleStr = String                            -- A -> rhs
+type ParseFun token ast = Stack token ast -> ast     -- {action}
+type ProdRulePrec = Maybe TokenOrPlaceholder         -- %prec <token>
 type ProdRulePrecs = [ProdRulePrec]
 
 type ParserSpecList token ast = [(ProdRuleStr, ParseFun token ast, ProdRulePrec)]
+
 data ParserSpec token ast =
   ParserSpec { startSymbol    :: String,
                tokenPrecAssoc :: TokenPrecAssoc,
@@ -237,6 +239,9 @@ instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show a
   => Exception (ParseError token ast)
 
 --
+parsing  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+  Bool -> ParserSpec token ast -> [Terminal token] -> IO ast
+
 parsing flag parserSpec terminalList =
   parsingHaskell flag parserSpec terminalList Nothing
   
