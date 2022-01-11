@@ -2,7 +2,7 @@
 module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
   , HandleParseError(..), defaultHandleParseError
-  , lexing, lexingWithLineColumn, _lexingWithLineColumn
+  , lexing, lexingWithLineColumn, _lexingWithLineColumn, nextToken
   , parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
   , LexError(..), ParseError(..)
@@ -32,6 +32,7 @@ import SynCompInterface
 import Config
 
 import Prelude hiding (catch)
+import Debug.Trace (trace)
 import System.Directory
 import Control.Exception
 import System.IO.Error hiding (catch)
@@ -137,70 +138,90 @@ instance Exception LexError
 --   putStr $ take 10 text
 
 --
-lexing :: TokenInterface token =>
-          LexerSpec token -> String -> IO [Terminal token]
+lexing :: (Monad m, TokenInterface token) =>
+          LexerSpec token -> String -> m [Terminal token]
 lexing lexerspec text = do
   (line, col, terminalList) <- lexingWithLineColumn lexerspec 1 1 text
   return terminalList
 
-lexingWithLineColumn :: TokenInterface token =>
-           LexerSpec token -> Line -> Column -> String -> IO (Line, Column, [Terminal token])
+lexingWithLineColumn :: (Monad m, TokenInterface token) =>
+           LexerSpec token -> Line -> Column -> String -> m (Line, Column, [Terminal token])
 lexingWithLineColumn lexerspec line col text =
   _lexingWithLineColumn False lexerspec line col text
 
-_lexingWithLineColumn debug lexerspec line col [] = do
-  let eot = endOfToken lexerspec 
-  return (line, col, [Terminal (fromToken eot) line col (Just eot)])
+_lexingWithLineColumn debugFlag lexerspec line col text =
+  __lexingWithLineColumn debugFlag lexerspec line col text []
 
-_lexingWithLineColumn debug lexerspec line col text = do  --Todo: make it tail-recursive!
-  (matchedText, theRestText, maybeTok, aSpec) <-
-    matchLexSpec line col (lexerSpecList lexerspec) text
-  let (line_, col_) = moveLineCol line col matchedText
 
-  let str_maybeTok = if isNothing maybeTok then "Nothing" else (fromToken (fromJust maybeTok))
-  
-  when (line==line_ && col==col_) $
-    throw (CommonParserUtil.LexError line col ("length-zero regexp detected? " ++ aSpec))
-  
-  when (debug) $ putStrLn $ show (line_, col_)
-  when (debug) $ putStrLn $ matchedText
-  when (debug) $ putStrLn $ if isNothing maybeTok then "Nothing" else str_maybeTok
-  
-  (line__, col__, terminalList) <- _lexingWithLineColumn debug lexerspec line_ col_ theRestText
-  case maybeTok of
-    Nothing  -> return (line__, col__, terminalList)
-    Just tok -> do
-      let terminal = Terminal matchedText line col (Just tok)
-      return (line__, col__, terminal:terminalList)
+__lexingWithLineColumn debugFlag lexerspec line col [] terminalList = do
+  return (line, col, reverse terminalList)
 
-matchLexSpec :: TokenInterface token =>
-                Line -> Column -> LexerSpecList token -> String
-             -> IO (String, String, Maybe token, String)
-matchLexSpec line col [] text = do
-  throw (CommonParserUtil.LexError line col (takeRet 0 text))
-  -- putStr $ "No matching lexer spec at "
-  -- putStr $ "Line " ++ show line
-  -- putStr $ "Column " ++ show col
-  -- putStr $ " : "
-  -- putStr $ take 10 text
-  -- exitWith (ExitFailure (-1))
+__lexingWithLineColumn debugFlag lexerspec line col text terminalList =
+  do ((matchedText, maybeTok, aSpec), (line_, col_, theRestText))
+         <- matchLexSpec debugFlag (endOfToken lexerspec) (lexerSpecList lexerspec) (line, col, text)
+
+     if line==line_ && col==col_
+       then throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
+       else
+         case maybeTok of
+           Nothing  -> __lexingWithLineColumn debugFlag lexerspec
+                          line_ col_ theRestText terminalList
+           Just tok ->
+             do let terminal = Terminal matchedText line col (Just tok)
+                __lexingWithLineColumn debugFlag lexerspec
+                            line_ col_ theRestText (terminal:terminalList)
+
+type LexState = (Line, Column, String)
+type MatchedSpec  = String
+type MatchedToken token = (String, Maybe token, MatchedSpec) -- (text, token, spec)
+
+matchLexSpec :: (Monad m, TokenInterface token) =>
+    Bool -> token {- End Of token -}  -> LexerSpecList token -> LexState
+             -> m (MatchedToken token, LexState)
+
+matchLexSpec debugFlag eot lexerspec buffer = -- buffer = (line, col, text)
+  mls debugFlag eot lexerspec buffer
   where
-    takeRet n [] = ""
-    takeRet 0 ('\n':text) = '\n' : takeRet 0 text
-    takeRet n ('\n':text)  = ""
-    takeRet n (c:text) = c : (takeRet (n+1) text)
+    mls debugFlag eot lexerspec (line, col, []) = do
+      return ((fromToken eot, Just eot, fromToken eot), (line+1, 1, [])) -- EOT at (line+1,1)?
 
-matchLexSpec line col ((aSpec,tokenBuilder):lexerspec) text = do
-  let (pre, matched, post) = text =~ aSpec :: (String,String,String)
-  case pre of
-    "" -> return (matched, post, tokenBuilder matched, aSpec)
-    _  -> matchLexSpec line col lexerspec text
+    mls debugFlag eot [] (line, col, text) = do
+      throw (CommonParserUtil.LexError line col (takeRet 0 text))
+      where
+        takeRet n [] = ""
+        takeRet 0 ('\n':text) = '\n' : takeRet 0 text
+        takeRet n ('\n':text)  = ""
+        takeRet n (c:text) = c : (takeRet (n+1) text)
+
+    mls debugFlag eot ((aSpec,tokenBuilder):lexerspec) (line, col, text) = do
+      let (pre, matched, post) = text =~ aSpec :: (String,String,String)
+      case pre of
+        "" -> let (line_, col_) = moveLineCol line col matched in
+              let maybeTok = tokenBuilder matched in
+              let str_maybeTok =
+                    if isNothing maybeTok
+                    then "Nothing"
+                    else (fromToken (fromJust maybeTok)) in
+
+              debug debugFlag (show (line_, col_)) $
+              debug debugFlag matched $
+              debug debugFlag (if isNothing maybeTok then "Nothing" else str_maybeTok) $
+
+              return ((matched, maybeTok, aSpec), (line_, col_, post))
+
+        _  -> mls debugFlag eot lexerspec (line, col, text)
 
 
 moveLineCol :: Line -> Column -> String -> (Line, Column)
 moveLineCol line col ""          = (line, col)
 moveLineCol line col ('\n':text) = moveLineCol (line+1) 1 text
 moveLineCol line col (ch:text)   = moveLineCol line (col+1) text
+
+-- External interface
+nextToken :: (Monad m, TokenInterface token) =>
+    Bool -> token -> LexerSpecList token -> LexState -> m (MatchedToken token, LexState)
+nextToken = matchLexSpec
+
   
 --------------------------------------------------------------------------------  
 -- The parsing machine
@@ -410,9 +431,15 @@ initState = 0
 
 type ParseFunList token ast = [ParseFun token ast]
 
+runAutomaton
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     Bool -> AutomatonSpec token ast -> [Terminal token] -> IO ast
 runAutomaton flag amSpec terminalList =
   runAutomatonHaskell flag amSpec terminalList Nothing
 
+runAutomatonHaskell
+  :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     Bool -> AutomatonSpec token ast -> [Terminal token] -> p -> IO ast
 runAutomatonHaskell flag amSpec terminalList haskellOption =
   do maybeConfig <- readConfig
   
@@ -450,9 +477,9 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
       
       maybeStatus <- 
             if isNothing _maybeStatus && length terminalList == 1   -- if terminal == "$"
-            then do debug flag $ ""
-                    debug flag $ "Saving: " ++ (prStack stack)
-                    return (Just stack)
+            then debug flag "" $
+                 debug flag ("Saving: " ++ prStack stack) $
+                 do return (Just stack)
             else do return _maybeStatus
             
       case lookupActionTable actionTbl state terminal of
@@ -460,8 +487,8 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
           -- putStrLn $ terminalToString terminal {- debug -}
           runAction state terminal action terminalList stack maybeStatus
           
-        Nothing -> do
-          debug flag $ "lookActionTable failed (1st) with: " ++ show (terminalToString terminal)
+        Nothing -> 
+          debug flag ("lookActionTable failed (1st) with: " ++ show (terminalToString terminal)) $
           case haskellOption of
             Just extraToken -> do
               let terminal_close_brace = Terminal
@@ -470,66 +497,69 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
                                               (terminalToCol terminal)
                                                 (Just extraToken)
               case lookupActionTable actionTbl state terminal_close_brace of
-                Just action -> do
+                Just action -> 
                   -- putStrLn $ terminalToString terminal_close_brace {- debug -}
-                  debug flag $ "lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace
-                  runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack maybeStatus
+                  debug flag ("lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace) $
+                  do runAction state terminal_close_brace action (terminal_close_brace : terminalList) stack maybeStatus
                   
-                Nothing -> do
-                  debug flag $ "lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace
-                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
+                Nothing -> 
+                  debug flag ("lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace) $
+                  do throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
                            
             Nothing -> throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules terminalList maybeStatus)
 
     -- separated to support the haskell layout rule
-    runAction state terminal action terminalList stack maybeStatus = do      
-      debug flag ("\nState " ++ show state)
-      debug flag ("Token " ++ tokenTextFromTerminal terminal)
-      debug flag ("Stack " ++ prStack stack)
+    runAction state terminal action terminalList stack maybeStatus =
+      debug flag ("\nState " ++ show state) $
+      debug flag ("Token " ++ tokenTextFromTerminal terminal) $
+      debug flag ("Stack " ++ prStack stack) $
       
       case action of
-        Accept -> do
-          debug flag "Accept"
-          debug flag $ terminalToString terminal {- debug -}
+        Accept -> 
+          debug flag "Accept" $
+          debug flag (terminalToString terminal) $ {- debug -}
           
           case stack !! 1 of
             StkNonterminal (Just ast) _ -> return ast
             StkNonterminal Nothing _ -> fail "Empty ast in the stack nonterminal"
             _ -> fail "Not Stknontermianl on Accept"
         
-        Shift toState -> do
-          debug flag ("Shift " ++ show toState)
-          debug flag $ terminalToString terminal {- debug -}
-          
-          let stack1 = push (StkTerminal (head terminalList)) stack
-          let stack2 = push (StkState toState) stack1
-          run (tail terminalList) stack2 maybeStatus
-          
-        Reduce n -> do
-          debug flag ("Reduce " ++ show n)
-          
-          let prodrule   = prodRules !! n
-          
-          debug flag ("\t" ++ show prodrule)
-          
-          let builderFun = pFunList  !! n
-          let lhs        = fst prodrule
-          let rhsLength  = length (snd prodrule)
-          let rhsAst = revTakeRhs rhsLength stack
-          let ast = builderFun rhsAst
-          let stack1 = drop (rhsLength*2) stack
-          let topState = currentState stack1
-          let toState =
-               case lookupGotoTable gotoTbl topState lhs of
-                 Just state -> state
-                 Nothing -> throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules terminalList maybeStatus)
-  
-          let stack2 = push (StkNonterminal (Just ast) lhs) stack1
-          let stack3 = push (StkState toState) stack2
-          run terminalList stack3 maybeStatus
+        Shift toState ->
+            debug flag ("Shift " ++ show toState) $
+            debug flag (terminalToString terminal) $ {- debug -}
 
-debug :: Bool -> String -> IO ()
-debug flag msg = if flag then putStrLn msg else return ()
+            let stack1 = push (StkTerminal (head terminalList)) stack in
+            let stack2 = push (StkState toState) stack1 in
+            do run (tail terminalList) stack2 maybeStatus
+          
+        Reduce n ->
+            debug flag ("Reduce " ++ show n) $
+
+            let prodrule = prodRules !! n in
+
+            debug flag ("\t" ++ show prodrule) $
+
+            let builderFun = pFunList  !! n in
+            let lhs        = fst prodrule in
+            let rhsLength  = length (snd prodrule) in
+            let rhsAst = revTakeRhs rhsLength stack in
+            let ast = builderFun rhsAst in
+            let stack1 = drop (rhsLength*2) stack in
+            let topState = currentState stack1 in
+            let toState =
+                 case lookupGotoTable gotoTbl topState lhs of
+                   Just state -> state
+                   Nothing -> throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules terminalList maybeStatus)
+            in  
+            let stack2 = push (StkNonterminal (Just ast) lhs) stack1 in
+            let stack3 = push (StkState toState) stack2 in
+            do run terminalList stack3 maybeStatus
+
+-- debug :: Bool -> String -> IO ()
+-- debug flag msg = if flag then putStrLn msg else return ()
+
+debug :: Bool -> String -> a -> a
+debug flag msg x = if flag then trace msg x else x
 
 prlevel :: Int -> String
 prlevel n = take n (let spaces = ' ' : spaces in spaces)
@@ -574,15 +604,15 @@ compCandidates
      -> Stack token ast
      -> IO ([[Candidate]], Bool)
 
-compCandidates ccOption level symbols state stk = do
-  let flag = cc_debugFlag ccOption
-  debug flag $ ""
-  debug flag $ "[compCandidates] "
-  debug flag $ " - state: " ++ show state
-  debug flag $ " - stack: " ++ prStack stk
-  debug flag $ ""
+compCandidates ccOption level symbols state stk = 
+  let flag = cc_debugFlag ccOption in
+  debug flag "" $ 
+  debug flag "[compCandidates] " $ 
+  debug flag (" - state: " ++ show state) $
+  debug flag (" - stack: " ++ prStack stk) $ 
+  debug flag "" $ 
   -- compGammasDfs ccOption level symbols state stk []
-  extendedCompCandidates ccOption symbols state stk
+  do extendedCompCandidates ccOption symbols state stk
   
 compGammasDfs
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -605,45 +635,45 @@ compGammasDfs ccOption level symbols state stk history =
       gotoTable = gotoTbl automaton
       productionRules = prodRules automaton
   in
-  if level > maxLevel then do
-    let result_symbols = if null symbols then [] else [symbols]
-    debug flag $ prlevel level ++ "maxlevel reached."
-    debug flag $ prlevel level ++ " - " ++ show result_symbols
-    return result_symbols
+  if level > maxLevel then 
+    let result_symbols = if null symbols then [] else [symbols] in
+    debug flag (prlevel level ++ "maxlevel reached.") $ 
+    debug flag (prlevel level ++ " - " ++ show result_symbols) $ 
+    do return result_symbols
   else
     checkCycle flag False level state stk "" history
      (\history ->
        {- 1. Reduce -}
        case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable, state==s, isReducible productionRules prnum stk] of
-         [] -> do
+         [] ->
            {- 2. Goto table -}
-           debug flag $ prlevel level ++ "no reduce: " ++ show state
+           debug flag (prlevel level ++ "no reduce: " ++ show state) $ 
            case nub [(nonterminal,toState) | ((fromState,nonterminal),toState) <- gotoTable, state==fromState] of
-             [] -> do
-               debug flag $ prlevel level ++ "no goto: " ++ show state
+             [] -> 
+               debug flag (prlevel level ++ "no goto: " ++ show state) $
                {- 3. Accept -}
                if length [True | ((s,lookahead),Accept) <- actionTable, state==s] >= 1
-               then do
-                      debug flag $ prlevel level ++ "accept: " ++ show state
-                      return []
+               then 
+                    debug flag (prlevel level ++ "accept: " ++ show state) $
+                    return []
                {- 4. Shift -}
                else let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s] in
                     let len = length cand2 in
                     case cand2 of
-                     [] -> do
-                       debug flag $ prlevel level ++ "no shift: " ++ show state
+                     [] -> 
+                       debug flag (prlevel level ++ "no shift: " ++ show state) $ 
                        return []
 
                      _  -> do listOfList <-
-                                mapM (\ ((terminal,snext),i)-> do
-                                   let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk  -- Todo: ??? (toToken terminal)
-                                   let stk2 = push (StkState snext) stk1
+                                mapM (\ ((terminal,snext),i)-> 
+                                   let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in -- Todo: ??? (toToken terminal)
+                                   let stk2 = push (StkState snext) stk1 in
 
-                                   debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                             ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                                   debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
-                                   debug flag $ prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
-                                   debug flag $ ""
+                                   debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                                ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
+                                   debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                                   debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])) $ 
+                                   debug flag "" $ 
 
                                    checkCycle flag True level snext stk2 terminal history
                                      (\history1 -> 
@@ -662,35 +692,35 @@ compGammasDfs ccOption level symbols state stk history =
                     -- checkCycle True level state stk nonterminal history
                     checkCycle flag True level snext stk2 nonterminal history
 
-                      (\history1 -> do
-                       debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                                ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                       debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
-                       debug flag $ prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
-                       debug flag $ ""
+                      (\history1 -> 
+                       debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
+                                     ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
+                       debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                       debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])) $ 
+                       debug flag "" $ 
 
                        compGammasDfs ccOption (level+1) (symbols++[NonterminalSymbol nonterminal]) snext stk2 history1) )
                          (zip nontermStateList [1..])
                return $ concat listOfList
 
-         prnumList -> do
-           let len = length prnumList
+         prnumList ->
+           let len = length prnumList in
 
-           debug flag $ prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state
-           debug flag $ prlevel (level+1) ++ show [ productionRules !! prnum | prnum <- prnumList ]
+           debug flag (prlevel level     ++ "# of prNumList to reduce: " ++ show len ++ " at State " ++ show state) $ 
+           debug flag (prlevel (level+1) ++ show [ productionRules !! prnum | prnum <- prnumList ]) $ 
 
            do listOfList <-
                mapM (\ (prnum,i) -> (
                  -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
                  checkCycle flag True level state stk (show prnum) history
-                   (\history1 -> do
-                      debug flag $ prlevel level ++ "REDUCE"
-                                      ++ " [" ++ show i ++ "/" ++ show len ++ "]"
-                      debug flag $ prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)
-                      debug flag $ prlevel level ++ " - State " ++ show state  
-                      debug flag $ prlevel level ++ " - Stack " ++ prStack stk
-                      debug flag $ prlevel level ++ " - Symbols: " ++ show symbols
-                      debug flag $ ""
+                   (\history1 -> 
+                      debug flag (prlevel level ++ "REDUCE"
+                                      ++ " [" ++ show i ++ "/" ++ show len ++ "]") $ 
+                      debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
+                      debug flag (prlevel level ++ " - State " ++ show state) $ 
+                      debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
+                      debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
+                      debug flag "" $ 
                       compGammasDfsForReduce ccOption level symbols state stk history1 prnum)) )
                     (zip prnumList [1..])
               return $ concat listOfList )
@@ -707,30 +737,31 @@ compGammasDfsForReduce ccOption level symbols state stk history prnum =
       rhsLength = length rhs
   in 
   if ( {- rhsLength == 0 || -} (rhsLength > length symbols) ) == False
-  then do
-    debug flag $ prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT "
-                   ++ show rhsLength ++ ">" ++ show (length symbols)
-    debug flag $ "rhs: " ++ show rhs
-    debug flag $ "symbols: " ++ show symbols
+  then
+    debug flag (prlevel level ++ "[LEN COND: False] length rhs > length symbols: NOT "
+                   ++ show rhsLength ++ ">" ++ show (length symbols)) $ 
+    debug flag ("rhs: " ++ show rhs) $ 
+    debug flag ("symbols: " ++ show symbols) $ 
     return [] -- Todo: (if null symbols then [] else [symbols])
     
-  else do   -- reducible
-    let stk1 = drop (rhsLength*2) stk
-    let topState = currentState stk1
+  else    -- reducible
+    let stk1 = drop (rhsLength*2) stk in
+    let topState = currentState stk1 in
     let toState =
          case lookupGotoTable (gotoTbl automaton) topState lhs of
            Just state -> state
            Nothing -> error $ "[compGammasDfsForReduce] Must not happen: lhs: "
                                 ++ lhs ++ " state: " ++ show topState
-    let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
-    let stk3 = push (StkState toState) stk2
-    debug flag $ prlevel level ++ " - GOTO : "
-                   ++ show topState ++ " " ++ lhs ++ " " ++ show toState
-    debug flag $ prlevel level ++ " --- Stack " ++ prStack stk3
-    debug flag $ ""
+    in                            
+    let stk2 = push (StkNonterminal Nothing lhs) stk1 in -- ast
+    let stk3 = push (StkState toState) stk2 in
+    debug flag (prlevel level ++ " - GOTO : "
+                   ++ show topState ++ " " ++ lhs ++ " " ++ show toState) $ 
+    debug flag (prlevel level ++ " --- Stack " ++ prStack stk3) $ 
+    debug flag "" $ 
 
-    debug flag $ prlevel level ++ "Found a gamma: " ++ show symbols
-    debug flag $ ""
+    debug flag (prlevel level ++ "Found a gamma: " ++ show symbols) $ 
+    debug flag "" $ 
 
     if isSimple  && not (null symbols) -- Todo: loosley simple mode:  +  && not (null symbols)
     then return (if null symbols then [] else [symbols])
@@ -808,16 +839,16 @@ extendedCompCandidates ccOption symbols state stk = do
          r_level   = cc_r_level ccOption
          gs_level  = cc_gs_level ccOption
       in
-      do debug debugFlag $ "simple(True)/nested(False): " ++ show isSimple
-         debug debugFlag $ "(Max) r level: " ++ show r_level
-         debug debugFlag $ "(Max) gs level: " ++ show gs_level
-         debug debugFlag $ ""
+         debug debugFlag ("simple(True)/nested(False): " ++ show isSimple) $ 
+         debug debugFlag ("(Max) r level: " ++ show r_level) $ 
+         debug debugFlag ("(Max) gs level: " ++ show gs_level) $ 
+         debug debugFlag "" $ 
 
-         list <- if isSimple
-                   then repReduce ccOption symbols state stk 
-                   else do extendedNestedCandidates ccOption [(state, stk, symbols)]
-                   
-         return [ c | (state, stk, c) <- list, null c == False ]
+         do list <- if isSimple
+                      then repReduce ccOption symbols state stk 
+                      else do extendedNestedCandidates ccOption [(state, stk, symbols)]
+
+            return [ c | (state, stk, c) <- list, null c == False ]
 
 
 -- Extended simple candidates
@@ -836,28 +867,28 @@ extendedNestedCandidates
        
 extendedNestedCandidates ccOption initStateStkCandsList =
   let f (state, stk, symbols) =
-        do debug debugFlag $ "Given "
-           debug debugFlag $ " - state " ++ show state
-           debug debugFlag $ " - stack " ++ prStack stk
-           debug debugFlag $ " - cand  " ++ show symbols
-           debug debugFlag $ ""
-           
-           repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
+          debug debugFlag "Given " $ 
+          debug debugFlag (" - state " ++ show state) $ 
+          debug debugFlag (" - stack " ++ prStack stk) $ 
+          debug debugFlag (" - cand  " ++ show symbols) $ 
+          debug debugFlag "" $ 
+
+          do repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
 
       debugFlag = cc_debugFlag ccOption
       r_level   = cc_r_level ccOption
   in
   if r_level > 0
   then
-    do debug debugFlag $ "[extendedNestedCandidates] :"
-       mapM_ (\(state, stk, cand) ->
-                 do debug debugFlag $ " - state " ++ show state
-                    debug debugFlag $ " - stack " ++ prStack stk
-                    debug debugFlag $ " - cand  " ++ show cand
-                    debug debugFlag $ ""
-             ) initStateStkCandsList
+    debug debugFlag "[extendedNestedCandidates] :" $ 
+      multiDbg (map (\(state, stk, cand) ->
+                     debug debugFlag (" - state " ++ show state) $
+                     debug debugFlag (" - stack " ++ prStack stk) $
+                     debug debugFlag (" - cand  " ++ show cand) $
+                     debug debugFlag ("")
+                ) initStateStkCandsList) $
 
-       stateStkCandsListList <- mapM f initStateStkCandsList
+    do stateStkCandsListList <- mapM f initStateStkCandsList
 
        if null stateStkCandsListList
          then return initStateStkCandsList
@@ -894,9 +925,9 @@ repReduce ccOption symbols state stk =
   in -- do debug flag $ prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)
 
      if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
-     then do
-            debug flag $ prlevel level ++ "accept: " ++ show state
-            return []
+     then 
+          debug flag (prlevel level ++ "accept: " ++ show state) $ 
+          return []
 
      else do
             case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
@@ -966,48 +997,47 @@ simulReduce ccOption symbols prnum len i state stk =
       
       rhsLength = length rhs
   in
-    do
-       -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
+     -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
-       debug flag $ prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at "
-       debug flag $ prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)
-       debug flag $ prlevel level ++ " - State " ++ show state  
-       debug flag $ prlevel level ++ " - Stack " ++ prStack stk
-       debug flag $ prlevel level ++ " - Symbols: " ++ show symbols
-       debug flag $ prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)
-       debug flag $ ""
+     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at ") $ 
+     debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
+     debug flag (prlevel level ++ " - State " ++ show state) $ 
+     debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
+     debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
+     debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+     debug flag "" $ 
 
-       if (rhsLength > length symbols) == False && False -- Q: 필요? False for the moment!
-       then do return []
+     if (rhsLength > length symbols) == False && False -- Q: 필요? False for the moment!
+     then do return []
 
-       else do let stk1 = drop (rhsLength*2) stk
-               let topState = currentState stk1
-               let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
-                     Just state -> state
-                     Nothing -> error $ "[simulReduce] Must not happen: lhs: "
-                                        ++ lhs ++ " state: " ++ show topState
-               let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
-               let stk3 = push (StkState toState) stk2
+     else do let stk1 = drop (rhsLength*2) stk
+             let topState = currentState stk1
+             let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+                   Just state -> state
+                   Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                      ++ lhs ++ " state: " ++ show topState
+             let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+             let stk3 = push (StkState toState) stk2
 
-               if isSimple then  -- simple mode
+             if isSimple then  -- simple mode
 
-                 if isInitReduces searchState then -- reduces until symbols are found
-                   do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
+               if isInitReduces searchState then -- reduces until symbols are found
+                 do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
 
-                      let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
+                    let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
 
-                      return (if null symbols
-                              then listOfList
-                              else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
-                 else if isFinalReduce searchState then
-                   do return (if null symbols
-                           then []
-                           else [(toState, stk3, symbols)])
-                 else -- SS_GotoOrShift
-                   do error $ "simulReduce: Unexpected search state" ++ show searchState
-                    
-               else -- nested mode
-                 do error $ "simulReduce: Unexpected nested mode: "
+                    return (if null symbols
+                            then listOfList
+                            else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
+               else if isFinalReduce searchState then
+                 do return (if null symbols
+                         then []
+                         else [(toState, stk3, symbols)])
+               else -- SS_GotoOrShift
+                 do error $ "simulReduce: Unexpected search state" ++ show searchState
+
+             else -- nested mode
+               do error $ "simulReduce: Unexpected nested mode: "
 
 
 simulGoto ccOption symbols state stk =
@@ -1030,16 +1060,16 @@ simulGoto ccOption symbols state stk =
             do
               let len = length nontermStateList
               listOfList <-
-                mapM (\ ((nonterminal,snext),i) -> do
-                          let stk1 = push (StkNonterminal Nothing nonterminal) stk
-                          let stk2 = push (StkState snext) stk1
+                mapM (\ ((nonterminal,snext),i) -> 
+                          let stk1 = push (StkNonterminal Nothing nonterminal) stk in
+                          let stk2 = push (StkState snext) stk1 in
 
-                          debug flag $ prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                                         ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext
-                          debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
-                          debug flag $ prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])
-                          debug flag $ prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)
-                          debug flag $ ""
+                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
+                                         ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
+                          debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                          debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])) $ 
+                          debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                          debug flag "" $ 
 
                           repGotoOrShift 
                             ccOption{cc_printLevel=level+1}
@@ -1068,16 +1098,16 @@ simulShift ccOption symbols state stk =
 
          _  -> do
                   listOfList <-
-                    mapM (\ ((terminal,snext),i)-> do
-                              let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk
-                              let stk2 = push (StkState snext) stk1
+                    mapM (\ ((terminal,snext),i)-> 
+                              let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in
+                              let stk2 = push (StkState snext) stk1 in
 
-                              debug flag $ prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                        ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext
-                              debug flag $ prlevel level ++ " - " ++ "Stack " ++ prStack stk2
-                              debug flag $ prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])
-                              debug flag $ prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)
-                              debug flag $ ""
+                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
+                                            ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
+                              debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                              debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])) $ 
+                              debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                              debug flag "" $ 
 
                               repGotoOrShift
                                 ccOption{cc_printLevel=level+1}
@@ -1103,9 +1133,9 @@ repGotoOrShift ccOption symbols state stk =
   in do -- debug flag $ prlevel level ++ "[repGotoOrShift] " ++ show (cc_searchState ccOption)
     
         if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
-        then do
-               debug flag $ prlevel level ++ "accept: " ++ show state
-               return []
+        then 
+             debug flag (prlevel level ++ "accept: " ++ show state) $ 
+             return []
 
         else do
                 listOfList1 <- repReduce
@@ -1190,11 +1220,11 @@ noCycleCheck = True
 
 checkCycle debugflag flag level state stk action history cont =
   if flag && (state,stk,action) `elem` history
-  then do
-    debug debugflag $ prlevel level ++ "CYCLE is detected !!"
-    debug debugflag $ prlevel level ++ " - " ++ show state ++ " " ++ action
-    debug debugflag $ prlevel level ++ " - " ++ prStack stk
-    debug debugflag $ ""
+  then 
+    debug debugflag (prlevel level ++ "CYCLE is detected !!") $ 
+    debug debugflag (prlevel level ++ " - " ++ show state ++ " " ++ action) $ 
+    debug debugflag (prlevel level ++ " - " ++ prStack stk) $ 
+    debug debugflag "" $ 
     return []
   else cont ( (state,stk,action) : history )
 
@@ -1255,19 +1285,19 @@ unwrapParseError hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules
 --
 arrivedAtTheEndOfSymbol hpeOption state stk automaton [_] maybeStatus =  -- [$]
   case maybeStatus of
-    Nothing -> do
-      debug (debugFlag hpeOption) $ "No saved stack"
+    Nothing ->
+      debug (debugFlag hpeOption) "No saved stack" $ 
       _handleParseError hpeOption state stk automaton
     Just savedStk ->
       let savedStk = fromJust maybeStatus
           savedState = currentState savedStk
-      in do
-          debug (debugFlag hpeOption) $ "Restored stack"
-          debug (debugFlag hpeOption) $ " - state: " ++ show savedState
-          debug (debugFlag hpeOption) $ " - stack: " ++ prStack savedStk
-          _handleParseError hpeOption savedState savedStk automaton
+      in 
+        debug (debugFlag hpeOption) "Restored stack" $ 
+        debug (debugFlag hpeOption) (" - state: " ++ show savedState) $ 
+        debug (debugFlag hpeOption) (" - stack: " ++ prStack savedStk) $ 
+        _handleParseError hpeOption savedState savedStk automaton
               
-arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList maybeStatus = do
+arrivedAtTheEndOfSymbol hpeOption state stk automaton terminalList maybeStatus =
      -- debug (debugFlag hpeOption) $ "length terminalList /= 1 : " ++ show (length terminalList)
      -- debug (debugFlag hpeOption) $ map (\t -> terminalToString $ t) terminalList
      return [SynCompInterface.ParseError (map terminalToString terminalList)]
@@ -1280,7 +1310,7 @@ _handleParseError
       postTerminalList=terminalListAfterCursor,
       nonterminalToStringMaybe=_nonterminalToStringMaybe,
       presentation=howtopresent})
-  state stk automaton = do
+  state stk automaton = 
   let ccOption = CompCandidates {
         cc_debugFlag=flag,
         cc_printLevel=0,
@@ -1289,46 +1319,54 @@ _handleParseError
         cc_automaton=automaton,
         cc_searchState = initSearchState init_r_level init_gs_level,
         cc_r_level = init_r_level,  
-        cc_gs_level = init_gs_level} 
-  (candidateListList, emacsDisplay) <- compCandidates ccOption 0 [] state stk
-  let colorListList_symbols =
-       [ filterCandidates candidateList terminalListAfterCursor
-       | candidateList <- candidateListList ]
+        cc_gs_level = init_gs_level}
+  in
   let convFun =
         case _nonterminalToStringMaybe of
           Nothing -> \s -> "..."
           Just fn -> fn
-  let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols
-  let colorListList = map collapseCandidates colorListList_
-  let emacsColorListList  = map (map showEmacsColor) colorListList
-  let strList = nub [ concatStrList strList | strList <- emacsColorListList ]
-  let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
+  in
+  do (candidateListList, emacsDisplay) <- compCandidates ccOption 0 [] state stk
+     let colorListList_symbols =
+          [ filterCandidates candidateList terminalListAfterCursor
+          | candidateList <- candidateListList ]
+          
+     let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols 
+     let colorListList = map collapseCandidates colorListList_ 
+     let emacsColorListList  = map (map showEmacsColor) colorListList 
+     let strList = nub [ concatStrList strList | strList <- emacsColorListList ] 
+     let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
 
-  debug (flag || True) $ ""
-  mapM_ (debug (flag || True)) $ map show colorListList_symbols
-  
-  debug (flag || True) $ ""
-  mapM_ (debug (flag || True)) $ map show rawStrListList
-  
-  debug (flag || True) $ ""
-  
-  -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
-  -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+     debug (flag || True) "" $ 
+      multiDbg (map (debug (flag || True)) (map show colorListList_symbols)) $ 
 
-  let formattedStrList =
-        case howtopresent of
-          0 -> strList
-          1 -> nub [ if null strList then "" else head strList | strList <- emacsColorListList ]
-          _ -> error $ "Does not support prsentation method: " ++ show howtopresent
+      debug (flag || True) "" $ 
+      multiDbg (map (debug (flag || True)) (map show rawStrListList)) $ 
 
+      debug (flag || True) "" $ 
+
+     -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
+     -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
+
+      let formattedStrList =
+            case howtopresent of
+              0 -> strList
+              1 -> nub [ if null strList then "" else head strList | strList <- emacsColorListList ]
+              _ -> error ("Does not support prsentation method: " ++ show howtopresent)
+
+      in
   
-  return $ if emacsDisplay
-             then map Candidate formattedStrList
-             else [] 
+      if emacsDisplay
+        then return (map Candidate formattedStrList)
+        else return [] 
   
   where
     showConcat [] = ""
     showConcat (s:ss) = s ++ " " ++ showConcat ss
+
+--
+multiDbg [] = \x -> x
+multiDbg (f:fs) = f . multiDbg fs
     
 -- | Filter the given candidates with the following texts
 data EmacsColor =
