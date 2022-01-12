@@ -1,5 +1,7 @@
 {-# LANGUAGE GADTs #-}
-module Terminal(Terminal(..), terminalToString, terminalToLine, terminalToCol, terminalToSymbol, terminalToMaybeToken, token_na) where
+module Terminal(Terminal(..),
+                terminalToString, terminalToLine, terminalToCol, terminalToSymbol,
+                terminalToMaybeToken, token_na, tokenTextFromTerminal) where
 
 import TokenInterface
 
@@ -32,3 +34,11 @@ terminalToSymbol (Terminal text _ _ _) = text
 
 terminalToMaybeToken :: TokenInterface token => Terminal token -> Maybe token
 terminalToMaybeToken (Terminal text line col maybetok) = maybetok
+
+-- | Utilities
+
+tokenTextFromTerminal :: TokenInterface token => Terminal token -> String
+tokenTextFromTerminal terminal =
+  case terminalToMaybeToken terminal of
+    Just token -> fromToken token
+    Nothing    -> token_na

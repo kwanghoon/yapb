@@ -9,10 +9,10 @@ import Lexer
 rule prodRule action              = (prodRule, action, Nothing  )
 ruleWithPrec prodRule action prec = (prodRule, action, Just prec)
 
-noAction = \rhs -> ()
+noAction = \rhs -> return ()
 
 --
-parserSpec :: ParserSpec Token AST
+parserSpec :: ParserSpec Token AST IO ()
 parserSpec = ParserSpec
   {
     startSymbol = "Start'",

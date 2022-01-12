@@ -3,11 +3,14 @@ module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
   , LexerParserState, Line, Column
   , HandleParseError(..), defaultHandleParseError
-  , lexing, lexingWithLineColumn, _lexingWithLineColumn, aLexer
-  , parsing, runAutomaton, parsingHaskell, runAutomatonHaskell
+  , matchLexSpec, LexAction
+  , lexing, lexingWithLineColumn, _lexingWithLineColumn
+  , parsing, ParseAction
+  , runAutomaton, parsingHaskell, runAutomatonHaskell
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
-  , successfullyParsed, handleLexError, handleParseError) where
+  , successfullyParsed, handleLexError, handleParseError)
+where
 
 import Attrs
 import Terminal
@@ -48,16 +51,31 @@ import System.IO.Error hiding (catch)
 -- | 
 -- |  (TODO: Need to modularize these utilities)
 
--- Lexer Specification
+-- | A Lexer and Parser Monad
+-- |
+-- |  - Common elements   : line, column, text
+-- |  - Extended elements : a  (E.g., what the lexer and the parser want to share)
+-- |  - Extended effects  : m  (E.g., typically, IO)
+
+type Line               = Int
+type Column             = Int
+type LexerParserState a = (a, Line, Column, String)    -- Lexer and parser states
+
+type LexerParserMonad m a = ST.StateT (LexerParserState a) m
+
+--------------------------------------------------------------------------------
+-- | Lexer Specification
+--------------------------------------------------------------------------------
+
 type RegExpStr    = String
-type LexFun token = String -> Maybe token 
+type LexAction token m a = String -> LexerParserMonad m a (Maybe token)
 
-type LexerSpecList token  = [(RegExpStr, LexFun token)]
+type LexerSpecList token m a = [(RegExpStr, LexAction token m a)]
 
-data LexerSpec token =
-  LexerSpec { endOfToken    :: token,
-              lexerSpecList :: LexerSpecList token
-            }
+data LexerSpec token m a =
+  LexerSpec
+    { endOfToken    :: token,
+      lexerSpecList :: LexerSpecList token m a }
 
 -- | Token precedence and associativity: TokenPrecAssoc token
 -- |
@@ -69,21 +87,24 @@ data LexerSpec token =
 
 type TokenPrecAssoc = [(Associativity, [TokenOrPlaceholder])]
 
+--------------------------------------------------------------------------------
 -- | Parser Specification
 -- |     A -> rhs %prec <token> {action}
+--------------------------------------------------------------------------------
 
-type ProdRuleStr = String                            -- A -> rhs
-type ParseFun token ast = Stack token ast -> ast     -- {action}
-type ProdRulePrec = Maybe TokenOrPlaceholder         -- %prec <token>
+type ProdRuleStr = String                       -- A -> rhs
+type ParseAction token ast m a =                -- {action}
+  Stack token ast -> LexerParserMonad m a ast
+type ProdRulePrec = Maybe TokenOrPlaceholder    -- %prec <token>
 type ProdRulePrecs = [ProdRulePrec]
 
-type ParserSpecList token ast = [(ProdRuleStr, ParseFun token ast, ProdRulePrec)]
+type ParserSpecList token ast m a = [(ProdRuleStr, ParseAction token ast m a, ProdRulePrec)]
 
-data ParserSpec token ast =
+data ParserSpec token ast m a=
   ParserSpec { startSymbol    :: String,
                tokenPrecAssoc :: TokenPrecAssoc,
-               chumLexerSpec  :: LexerSpec token,
-               parserSpecList :: ParserSpecList token ast,
+               chumLexerSpec  :: LexerSpec token m a,
+               parserSpecList :: ParserSpecList token ast m a,
                baseDir        :: String,   -- ex) ./
                actionTblFile  :: String,   -- ex) actiontable.txt
                gotoTblFile    :: String,   -- ex) gototable.txt
@@ -92,277 +113,9 @@ data ParserSpec token ast =
                genparserexe   :: String    -- ex) genlrparse-exe
              }
 
-toTokenAttrs :: TokenPrecAssoc -> TokenAttrs
-toTokenAttrs tokenSpec = TokenAttrs (toTokenAttrs' tokenSpec 1)
-  where
-    toTokenAttrs' [] n = []
-    toTokenAttrs' ((assoc, tokenPlaceholderList):tokenSpec) n =
-      [ (tokenOrPlaceholder, (assoc, n)) | tokenOrPlaceholder <- tokenPlaceholderList ]
-        ++ toTokenAttrs' tokenSpec (n+1)
-
-toProdRuleAttrs :: TokenAttrs -> ProdRulePrecs -> ProdRuleAttrs
-toProdRuleAttrs tokenAttrs prodRulePrecs = ProdRuleAttrs (toProdRuleAttrs' prodRulePrecs 0)
-  where
-    TokenAttrs tokenAttrs' = tokenAttrs
-    
-    toProdRuleAttrs' [] n = []
-    
-    toProdRuleAttrs' (Nothing:prodRulePrecs) n =
-      toProdRuleAttrs' prodRulePrecs (n+1)
-      
-    toProdRuleAttrs' ((Just tokenOrPlaceholder):prodRulePrecs) n =
-      case [ (assoc, prec)
-           | (tokenOrPlaceholder', (assoc, prec)) <- tokenAttrs'
-           , tokenOrPlaceholder==tokenOrPlaceholder' ] of
-        [] -> error $ "The production rule #" ++ show n ++ " refers to "
-                        ++ tokenOrPlaceholder ++ " but not found"
-        ((assoc,prec):_) -> (n,(assoc,prec)) : toProdRuleAttrs' prodRulePrecs (n+1)
-
--- Specification
-data Spec token ast =
-  Spec (LexerSpec token) (ParserSpec token ast)
-
---------------------------------------------------------------------------------  
--- The lexing machine
---------------------------------------------------------------------------------  
-type Line = Int
-type Column = Int
-
---
-data LexError = LexError Int Int String  -- Line, Col, Text
-  deriving (Typeable, Show)
-
-instance Exception LexError
-
--- prLexError (CommonParserUtil.LexError line col text) = do
---   putStr $ "No matching lexer spec at "
---   putStr $ "Line " ++ show line
---   putStr $ "Column " ++ show col
---   putStr $ " : "
---   putStr $ take 10 text
-
---
-lexing :: (Monad m, TokenInterface token) =>
-          LexerSpec token -> LexerParserState a -> String -> m [Terminal token]
-lexing lexerspec state_parm text = do
-  (state_parm_, line, col, terminalList) <- lexingWithLineColumn lexerspec state_parm 1 1 text
-  return terminalList
-
-lexingWithLineColumn :: (Monad m, TokenInterface token) =>
-           LexerSpec token -> LexerParserState a -> Line -> Column -> String -> m (LexerParserState a, Line, Column, [Terminal token])
-lexingWithLineColumn lexerspec state_parm line col text =
-  _lexingWithLineColumn False lexerspec state_parm line col text
-
-_lexingWithLineColumn debugFlag lexerspec state_parm line col text =
-  __lexingWithLineColumn debugFlag lexerspec state_parm line col text []
-
-
-__lexingWithLineColumn debugFlag lexerspec state_parm line col [] terminalList = do
-  return (state_parm, line, col, reverse terminalList)
-
-__lexingWithLineColumn debugFlag lexerspec state_parm line col text terminalList =
-  do ((matchedText, maybeTok, aSpec), (state_parm_, line_, col_, theRestText))
-         <- matchLexSpec debugFlag (endOfToken lexerspec) (lexerSpecList lexerspec) (state_parm, line, col, text)
-
-     case maybeTok of
-       Nothing  -> __lexingWithLineColumn debugFlag lexerspec
-                      state_parm_ line_ col_ theRestText terminalList
-       Just tok ->
-         do let terminal = Terminal matchedText line col (Just tok)
-            __lexingWithLineColumn debugFlag lexerspec
-                        state_parm_ line_ col_ theRestText (terminal:terminalList)
-
--- | a monadic lexer
--- |
--- |  StateT LexerParserState m (MatchedToken token)
--- |
-
-aLexer :: (Monad m, TokenInterface token) =>
-          Bool -> LexerSpec token -> {- Line -> Column -> String -> -}
-            LexerParserState a -> m (MatchedToken token, LexerParserState a)
-            
-aLexer debugFlag lexerSpec = -- line col text =
-  -- let initLexerState = (line, col, text) in
-  matchLexSpec debugFlag (endOfToken lexerSpec) (lexerSpecList lexerSpec) -- initLexerState
-
-  
-
--- | Lexer and parser states
-type LexerParserState a = (a, Line, Column, String)
-
--- | Matched token = (text, optional token, spec)
-type MatchedSpec  = String
-type MatchedToken token = (String, Maybe token, MatchedSpec)
-
--- | A demand-driven lexer
-matchLexSpec :: (Monad m, TokenInterface token) =>
-  Bool -> token {- End Of token -}  -> LexerSpecList token
-       -> LexerParserState a -> m (MatchedToken token, LexerParserState a)
-
-matchLexSpec debugFlag eot lexerspec lp_state =
-  mls debugFlag eot lexerspec lp_state
-  where
-    mls debugFlag eot lexerspec (state_parm, line, col, []) = do
-      return ((fromToken eot, Just eot, fromToken eot), (state_parm, line+1, 1, [])) 
-                                                          -- EOT at (line+1,1)?
-    mls debugFlag eot [] (state_parm, line, col, text) = do
-      throw (CommonParserUtil.LexError line col (takeRet 0 text))
-
-    mls debugFlag eot ((aSpec,tokenBuilder):lexerspec) (state_parm, line, col, text) = do
-      let (pre, matched, post) = text =~ aSpec :: (String,String,String)
-      case pre of
-        "" -> let (line_, col_) = moveLineCol line col matched in
-               if line==line_ && col==col_
-               then
-                 throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
-                 
-               else
-                 let maybeTok = tokenBuilder matched in
-                 let state_parm_ = state_parm in   -- state_parm_ from tokenBuilder
-                 let str_maybeTok =
-                       if isNothing maybeTok
-                       then "Nothing"
-                       else (fromToken (fromJust maybeTok)) in
-
-                 debug debugFlag "" $ 
-                 debug debugFlag (show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
-                 debug debugFlag ("Lexer returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
-
-                 return ((matched, maybeTok, aSpec), (state_parm_, line_, col_, post))
-
-        _  -> mls debugFlag eot lexerspec (state_parm, line, col, text)
-
-takeRet n [] = ""
-takeRet 0 ('\n':text) = '\n' : takeRet 0 text
-takeRet n ('\n':text)  = ""
-takeRet n (c:text) = c : (takeRet (n+1) text)
-
-moveLineCol :: Line -> Column -> String -> (Line, Column)
-moveLineCol line col ""          = (line, col)
-moveLineCol line col ('\n':text) = moveLineCol (line+1) 1 text
-moveLineCol line col (ch:text)   = moveLineCol line (col+1) text
-
-  
---------------------------------------------------------------------------------  
--- The parsing machine
 --------------------------------------------------------------------------------
-
-type CurrentState    = Int
-type StateOnStackTop = Int
-type LhsSymbol = String
-
-type AutomatonSnapshot token ast =   -- TODO: Refactoring
-  (Stack token ast, ActionTable, GotoTable, ProdRules)
-
---
-data ParseError token ast a where
-    -- teminal, state, stack actiontbl, gototbl
-    NotFoundAction :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      (Terminal token) -> CurrentState -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> LexerParserState a ->  -- [Terminal token]
-      Maybe [StkElem token ast] ->
-      ParseError token ast a
-    
-    -- topState, lhs, stack, actiontbl, gototbl,
-    NotFoundGoto :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      StateOnStackTop -> LhsSymbol -> (Stack token ast) -> ActionTable -> GotoTable -> ProdRules -> LexerParserState a -> -- [Terminal token]
-      Maybe [StkElem token ast] ->
-      ParseError token ast a
-
-  deriving (Typeable)
-
-instance (Show token, Show ast) => Show (ParseError token ast a) where
-  showsPrec p (NotFoundAction terminal state stack _ _ _ (_,line,col,text) _ ) =
-    (++) "NotFoundAction: State " . (++) (show state) . (++) " : " . (++) (terminalToString terminal) . (++) " " -- (++) (show $ length stack)
-      . (++) "Line " . (++) (show line) . (++) " " . (++) "Column " . (++) (show col) . (++) " : " . (++) (takeRet 80 text)
-  showsPrec p (NotFoundGoto topstate lhs stack _ _ _ (_,line,col,text) _) =
-    (++) "NotFoundGoto: State " . (++) (show topstate) . (++) " ; " . (++) lhs . (++) " " -- . (++) (show stack)
-      . (++) "Line " . (++) (show line) . (++) " " . (++) "Column " . (++) (show col) . (++) " : " . (++) (takeRet 80 text)
-
-instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show ast, Typeable a)
-  => Exception (ParseError token ast a)
-
-lpStateFrom (NotFoundAction _ _ _ _ _ _ lpstate _) = lpstate
-lpStateFrom (NotFoundGoto _ _ _ _ _ _ lpstate _) = lpstate
-
---
-parsing  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-  Bool -> ParserSpec token ast -> LexerParserState a -> IO ast
-
-parsing flag parserSpec init_lp_state =
-  parsingHaskell flag parserSpec init_lp_state Nothing
-  
-parsingHaskell :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-           Bool -> ParserSpec token ast -> LexerParserState a -> Maybe token -> IO ast
-parsingHaskell flag parserSpec init_lp_state haskellOption = do
-  -- 1. Save the production rules in the parser spec (Parser.hs).
-  writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr
-
-  -- 2. If the grammar file is written,
-  --    run the following command to generate prod_rules/action_table/goto_table files.
-  --     stack exec -- yapb-exe mygrammar.grm -output prod_rules.txt action_table.txt goto_table.txt
-  when writtenBool generateAutomaton
-
-  -- 3. Load automaton files (prod_rules/action_table/goto_table.txt)
-  (actionTbl, gotoTbl, prodRules) <-
-    loadAutomaton grammarFileName actionTblFileName gotoTblFileName
-
-  -- 4. Run the automaton
-  if null actionTbl || null gotoTbl || null prodRules
-    then do let hashFile = getHashFileName specFileName
-            putStrLn $ "Delete " ++ hashFile
-            removeIfExists hashFile
-            error $ "Error: Empty automation: please rerun"
-    else do ast <- runAutomatonHaskell flag
-                     (AutomatonSpec {
-                       am_initState=initState,
-                       am_actionTbl=actionTbl,
-                       am_gotoTbl=gotoTbl,
-                       am_prodRules=prodRules,
-                       am_parseFuns=pFunList,
-                       am_lexerSpec=chumLexerSpec parserSpec})
-                     init_lp_state haskellOption
-            -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
-            return ast
-
-  where
-    specFileName      = parserSpecFile parserSpec  -- e.g., mygrammar.grm
-    grammarFileName   = grammarFile    parserSpec  --       prod_rules.txt
-    actionTblFileName = actionTblFile  parserSpec  --       action_table.txt
-    gotoTblFileName   = gotoTblFile    parserSpec  --       goto_table.txt 
-    
-    sSym          = startSymbol parserSpec
-    tokenAttrList = tokenPrecAssoc parserSpec
-
-    tokenAttrs    = toTokenAttrs tokenAttrList
-    tokenAttrsStr = show tokenAttrs
-    
-    pSpecList = map (\(f,s,t)->f) (parserSpecList parserSpec)
-    pFunList  = map (\(f,s,t)->s) (parserSpecList parserSpec)
-    pPrecList = map (\(f,s,t)->t) (parserSpecList parserSpec)
-
-    prodRuleAttrs = toProdRuleAttrs tokenAttrs pPrecList
-    prodRuleAttrsStr = show prodRuleAttrs
-
-    generateAutomaton = do
-      exitCode <- rawSystem "stack"
-                  [ "exec", "--",
-                    "yapb-exe", specFileName, "-output",
-                    grammarFileName, actionTblFileName, gotoTblFileName
-                  ]
-      case exitCode of
-        ExitFailure code -> exitWith exitCode
-        ExitSuccess -> putStrLn ("Successfully generated: " ++
-                                 actionTblFileName ++ ", "  ++
-                                 gotoTblFileName ++ ", " ++
-                                 grammarFileName);
---
-removeIfExists :: FilePath -> IO ()
-removeIfExists fileName = removeFile fileName `catch` handleExists
-  where handleExists e
-          | isDoesNotExistError e = return ()
-          | otherwise = throwIO e
-
--- Stack
+-- | Stack
+--------------------------------------------------------------------------------
 
 data StkElem token ast =
     StkState Int
@@ -371,12 +124,11 @@ data StkElem token ast =
 
 instance TokenInterface token => Eq (StkElem token ast) where
   (StkState i)          == (StkState j)          = i == j
-  (StkTerminal termi)   == (StkTerminal termj)   = tokenTextFromTerminal termi == tokenTextFromTerminal termj
+  (StkTerminal termi)   == (StkTerminal termj)   =
+     tokenTextFromTerminal termi == tokenTextFromTerminal termj
   (StkNonterminal _ si) == (StkNonterminal _ sj) = si == sj
 
 type Stack token ast = [StkElem token ast]
-
-emptyStack = []
 
 get :: Stack token ast -> Int -> ast
 get stack i =
@@ -390,6 +142,8 @@ getText stack i =
   case stack !! (i-1) of
     StkTerminal (Terminal text _ _ _) -> text
     _ -> error $ "getText: out of bound: " ++ show i
+
+emptyStack = []
 
 push :: a -> [a] -> [a]
 push elem stack = elem:stack
@@ -409,14 +163,241 @@ prStack (StkTerminal (Terminal text _ _ Nothing) : stack) =
   (token_na ++ " " ++ text) ++  " : " ++ prStack stack
 prStack (StkNonterminal _ str : stack) = str ++ " : " ++ prStack stack
 
+-- -- Specification
+-- data Spec token ast =
+--   Spec (LexerSpec token) (ParserSpec token ast)
+
+--------------------------------------------------------------------------------  
+-- | The lexing machine
+--------------------------------------------------------------------------------  
+
+data LexError = LexError Int Int String  -- Line, Col, Text
+  deriving (Typeable, Show)
+
+instance Exception LexError
+
+-- LexError line col text
+--   - "No matching lexer spec at "
+--   - "Line " ++ show line
+--   - "Column " ++ show col
+--   - " : "
+--   - take 10 text
+
+-- | Matched token = (text, optional token, spec)
+type MatchedSpec  = String
+type MatchedToken token = (String, Maybe token, MatchedSpec)
+
+
+--------------------------------------------------------------------------------
+-- | [Core] A demand-driven lexer
+--------------------------------------------------------------------------------
+
+matchLexSpec :: (Monad m, TokenInterface token) =>
+  Bool -> token -> LexerSpecList token m a      -- token => End Of token!
+       -> LexerParserMonad m a (MatchedToken token)
+
+matchLexSpec debugFlag eot lexerspec =
+  mls debugFlag eot lexerspec
+
+  where
+     mls
+       :: (Monad m, TokenInterface token) =>
+          Bool
+          -> token
+          -> LexerSpecList token m a
+          -> ST.StateT (LexerParserState a) m (MatchedToken token)
+     mls debugFlag eot lexerspec =
+       do (state_parm, line, col, text) <- ST.get
+          mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
+
+     mlsSub
+       :: (Monad m, TokenInterface token) =>
+          Bool
+          -> token
+          -> LexerSpecList token m a
+          -> (LexerParserState a)
+          -> ST.StateT (LexerParserState a) m (MatchedToken token)
+     mlsSub debugFlag eot lexerspec (state_parm, line, col, []) =
+       do ST.put (state_parm, line+1, 1, [])                  -- EOT at (line+1,1)?
+          return (fromToken eot, Just eot, fromToken eot)
+
+     mlsSub debugFlag eot [] (state_parm, line, col, text) = do
+       throw (CommonParserUtil.LexError line col (takeRet 0 text))
+
+     mlsSub debugFlag eot ((aSpec,tokenBuilder):lexerspec) (state_parm, line, col, text) = do
+       let (pre, matched, post) = text =~ aSpec :: (String,String,String)
+       case pre of
+         "" -> let (line_, col_) = moveLineCol line col matched in
+                if line==line_ && col==col_
+                then
+                  throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
+
+                else
+                  do maybeTok <- tokenBuilder matched
+
+                     let str_maybeTok =
+                           if isNothing maybeTok
+                           then "Nothing"
+                           else (fromToken (fromJust maybeTok))
+
+                     (state_parm_, _, _, _) <- ST.get
+                     ST.put (state_parm_, line_, col_, post)
+
+                     debug debugFlag "" $ 
+                      debug debugFlag (show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
+                       debug debugFlag ("Lexer returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
+
+                        return (matched, maybeTok, aSpec)
+
+         _  -> mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
+
+takeRet n [] = ""
+takeRet 0 ('\n':text) = '\n' : takeRet 0 text
+takeRet n ('\n':text)  = ""
+takeRet n (c:text) = c : (takeRet (n+1) text)
+
+moveLineCol :: Line -> Column -> String -> (Line, Column)
+moveLineCol line col ""          = (line, col)
+moveLineCol line col ('\n':text) = moveLineCol (line+1) 1 text
+moveLineCol line col (ch:text)   = moveLineCol line (col+1) text
+
+
+-- | Repeat matchLexSpec until all tokens are retrieved
+repMatchLexSpec :: (Monad m, TokenInterface token) =>
+  Bool -> token -> LexerSpecList token m a ->     -- token => End Of token!
+  LexerParserMonad m a [Terminal token]
+repMatchLexSpec debugFlag eot lexerspec  =
+  repMLS debugFlag eot lexerspec []
+  
+  where
+    repMLS debugFlag eot lexerspec terminalList =
+      do (_, line, col, _) <- ST.get
+
+         (text, maybeToken, lexSpec) <-
+           matchLexSpec debugFlag eot lexerspec
+
+         case maybeToken of
+           Just token ->
+             if isEOT token
+             then return (reverse terminalList)
+             else do repMLS debugFlag eot lexerspec
+                       (Terminal text line col maybeToken : terminalList)
+
+           Nothing    -> repMLS debugFlag eot lexerspec terminalList
+
+-- | Lexing only intefaces
+lexing :: (Monad m, TokenInterface token) =>
+  LexerSpec token m a -> a -> String -> m [Terminal token]
+lexing lexerspec state_parm text = do
+  lexingWithLineColumn lexerspec state_parm 1 1 text
+
+
+lexingWithLineColumn :: (Monad m, TokenInterface token) =>
+  LexerSpec token m a -> a -> Line -> Column -> String -> m [Terminal token]
+lexingWithLineColumn lexerspec state_parm line col text =
+  _lexingWithLineColumn False lexerspec state_parm line col text
+
+
+_lexingWithLineColumn :: (Monad m, TokenInterface token) =>
+  Bool -> LexerSpec token m a -> a -> Line -> Column -> String -> m [Terminal token]
+_lexingWithLineColumn debugFlag lexerspec state_parm line col text =
+  do terminalList  <-
+       ST.evalStateT
+         (repMatchLexSpec debugFlag (endOfToken lexerspec) (lexerSpecList lexerspec))
+           (state_parm, line, col, text)
+
+     return terminalList
+
+
+--------------------------------------------------------------------------------  
+-- The parsing machine with parse/lex errors
+--------------------------------------------------------------------------------
+
+type CurrentState    = Int
+type StateOnStackTop = Int
+type LhsSymbol = String
+
+type AutomatonSnapshot token ast =   -- TODO: Refactoring
+  (Stack token ast, ActionTable, GotoTable, ProdRules)
+
+--
+data ParseError token ast a where
+    -- teminal, state, stack actiontbl, gototbl
+    NotFoundAction ::
+      (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+      (Terminal token) -> CurrentState -> (Stack token ast) ->
+      ActionTable -> GotoTable -> ProdRules ->
+      LexerParserState a ->  -- [Terminal token]
+      Maybe [StkElem token ast] ->
+      ParseError token ast a
+    
+    -- topState, lhs, stack, actiontbl, gototbl,
+    NotFoundGoto ::
+      (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+      StateOnStackTop -> LhsSymbol -> (Stack token ast) ->
+      ActionTable -> GotoTable -> ProdRules ->
+      LexerParserState a -> -- [Terminal token]
+      Maybe [StkElem token ast] ->
+      ParseError token ast a
+
+  deriving (Typeable)
+
+instance (Show token, Show ast) => Show (ParseError token ast a) where
+  showsPrec p (NotFoundAction terminal state stack _ _ _ (_,line,col,text) _ ) =
+    (++) "NotFoundAction: State " .
+    (++) (show state) . (++) " : " .
+    (++) (terminalToString terminal) . (++) " " .    -- (++) (show $ length stack)
+    (++) "Line " . (++) (show line) . (++) " " .
+    (++) "Column " . (++) (show col) . (++) " : " .
+    (++) (takeRet 80 text)
+    
+  showsPrec p (NotFoundGoto topstate lhs stack _ _ _ (_,line,col,text) _) =
+    (++) "NotFoundGoto: State " .
+    (++) (show topstate) . (++) " ; " .
+    (++) lhs . (++) " " .                            -- . (++) (show stack)
+    (++) "Line " . (++) (show line) . (++) " " .
+    (++) "Column " . (++) (show col) . (++) " : " .
+    (++) (takeRet 80 text)
+
+instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show ast, Typeable a)
+  => Exception (ParseError token ast a)
+
+lpStateFrom (NotFoundAction _ _ _ _ _ _ lpstate _) = lpstate
+lpStateFrom (NotFoundGoto   _ _ _ _ _ _ lpstate _) = lpstate
+
+--------------------------------------------------------------------------------
+-- | Automation specification
+--------------------------------------------------------------------------------
+
+data AutomatonSpec token ast m a =
+  AutomatonSpec {
+    am_actionTbl :: ActionTable,
+    am_gotoTbl :: GotoTable,
+    am_prodRules :: ProdRules,
+    am_parseFuns :: ParseActionList token ast m a,
+    am_initState :: Int,
+    am_lexerSpec :: LexerSpec token m a
+  }
+
+initState = 0
+
+type ParseActionList token ast m a = [ParseAction token ast m a]
+
+
+--------------------------------------------------------------------------------
+-- | Automaton 
+--------------------------------------------------------------------------------
+
 -- Utility for Automation
 currentState :: Stack token ast -> Int
 currentState (StkState i : stack) = i
 currentState _                    = error "No state found in the stack top"
 
-tokenTextFromTerminal :: TokenInterface token => Terminal token -> String
-tokenTextFromTerminal (Terminal _ _ _ (Just token)) = fromToken token
-tokenTextFromTerminal (Terminal _ _ _ Nothing) = token_na
+lookupTable :: (Eq a, Show a) => [(a,b)] -> a -> String -> Maybe b
+lookupTable tbl key msg =   
+  case [ val | (key', val) <- tbl, key==key' ] of
+    [] -> Nothing -- error $ msg ++ " : " ++ show key
+    (h:_) -> Just h
 
 lookupActionTable :: TokenInterface token => ActionTable -> Int -> (Terminal token) -> Maybe Action
 lookupActionTable actionTbl state terminal =
@@ -428,12 +409,6 @@ lookupGotoTable gotoTbl state nonterminalStr =
   lookupTable gotoTbl (state,nonterminalStr)
      ("Not found in the goto table: ")
 
-lookupTable :: (Eq a, Show a) => [(a,b)] -> a -> String -> Maybe b
-lookupTable tbl key msg =   
-  case [ val | (key', val) <- tbl, key==key' ] of
-    [] -> Nothing -- error $ msg ++ " : " ++ show key
-    (h:_) -> Just h
-
 
 -- Note: take 1th, 3rd, 5th, ... of 2*len elements from stack and reverse it!
 -- example) revTakeRhs 2 [a1,a2,a3,a4,a5,a6,...]
@@ -444,28 +419,14 @@ revTakeRhs n (_:nt:stack) = revTakeRhs (n-1) stack ++ [nt]
 
 -- Automaton
 
-data AutomatonSpec token ast =
-  AutomatonSpec {
-    am_actionTbl :: ActionTable,
-    am_gotoTbl :: GotoTable,
-    am_prodRules :: ProdRules,
-    am_parseFuns :: ParseFunList token ast,
-    am_initState :: Int,
-    am_lexerSpec :: LexerSpec token
-  }
-
-initState = 0
-
-type ParseFunList token ast = [ParseFun token ast]
-
 runAutomaton
   :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-     Bool -> AutomatonSpec token ast -> LexerParserState a -> IO ast
+     Bool -> AutomatonSpec token ast IO a -> LexerParserState a -> IO ast
 runAutomaton flag amSpec init_lp_state = runAutomatonHaskell flag amSpec init_lp_state Nothing
 
 runAutomatonHaskell
   :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-     Bool -> AutomatonSpec token ast -> LexerParserState a -> p -> IO ast
+     Bool -> AutomatonSpec token ast IO a -> LexerParserState a -> p -> IO ast
 runAutomatonHaskell flag amSpec init_lp_state haskellOption =
   do maybeConfig <- readConfig
   
@@ -473,16 +434,15 @@ runAutomatonHaskell flag amSpec init_lp_state haskellOption =
                Nothing -> return flag
                Just config -> return $ config_DEBUG config
 
-     let nextTerminal_ lp_state@(state_parm, line, col, text) =
-           do ((matchedText, maybeTok, aSpec), lp_state_) <-
-                            aLexer flag (am_lexerSpec amSpec) lp_state
-
-              case maybeTok of
-                Nothing -> nextTerminal_ lp_state_
-                Just tok ->
-                  return (Terminal matchedText line col maybeTok, lp_state_)
-           
-     let nextTerminal = ST.StateT nextTerminal_
+     let lexerspec = am_lexerSpec amSpec
+     
+     let nextTerminal = do
+           (_, line, col, _) <- ST.get
+           (matchedText, maybeTok, _) <-
+             matchLexSpec flag (endOfToken lexerspec) (lexerSpecList lexerspec)
+           case maybeTok of
+             Nothing -> nextTerminal
+             Just tok -> return (Terminal matchedText line col maybeTok)
 
      ST.evalStateT (runYapbAutomaton flag amSpec nextTerminal Nothing) init_lp_state
 
@@ -491,8 +451,8 @@ runYapbAutomaton :: (Monad m, TokenInterface token, Typeable token, Typeable ast
   -- debug flag
   Bool ->
   
-  -- static part ActionTable,GotoTable,ProdRules,ParseFunList token ast ->
-  AutomatonSpec token ast ->
+  -- static part ActionTable,GotoTable,ProdRules,ParseActionList token ast ->
+  AutomatonSpec token ast m a ->
   
   -- dynamic part
   ST.StateT (LexerParserState a) m (Terminal token) ->
@@ -601,30 +561,144 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
             let lhs        = fst prodrule in
             let rhsLength  = length (snd prodrule) in
             let rhsAst = revTakeRhs rhsLength stack in
-            let ast = builderFun rhsAst in
-            let stack1 = drop (rhsLength*2) stack in
-            let topState = currentState stack1 in
+            do ast <- builderFun rhsAst 
+               let stack1 = drop (rhsLength*2) stack
+               let topState = currentState stack1
               
-            do toState <-
+               toState <-
                     case lookupGotoTable gotoTbl topState lhs of
                       Just state -> return state
                       Nothing -> do lp_state <- ST.get
-                                    throw (NotFoundGoto topState lhs stack actionTbl gotoTbl prodRules lp_state maybeStatus)
+                                    throw (NotFoundGoto topState lhs stack
+                                             actionTbl gotoTbl prodRules
+                                               lp_state maybeStatus)
 
                let stack2 = push (StkNonterminal (Just ast) lhs) stack1 
                let stack3 = push (StkState toState) stack2
                run (Just terminal) stack3 maybeStatus -- Use the terminal again the next time!
 
--- debug :: Bool -> String -> IO ()
--- debug flag msg = if flag then putStrLn msg else return ()
-
-debug :: Bool -> String -> a -> a
-debug flag msg x = if flag then trace msg x else x
-
 prlevel :: Int -> String
 prlevel n = take n (let spaces = ' ' : spaces in spaces)
 
+
+--------------------------------------------------------------------------------
+-- | Parsing interfaces
+--------------------------------------------------------------------------------
+
+parsing  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
+  Bool -> ParserSpec token ast IO a -> LexerParserState a -> IO ast
+
+parsing flag parserSpec init_lp_state =
+  parsingHaskell flag parserSpec init_lp_state Nothing
+  
+parsingHaskell :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
+           Bool -> ParserSpec token ast IO a -> LexerParserState a -> Maybe token -> IO ast
+parsingHaskell flag parserSpec init_lp_state haskellOption = do
+  -- 1. Save production rules (in the parser spec, e.g., Parser.hs)
+  --    to a grammar file.
+  writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr
+
+  -- 2. Given a grammar file,
+  --    run the following command to generate prod_rules/action_table/goto_table files.
+  --
+  --     $ stack exec -- yapb-exe mygrammar.grm \
+  --                  -output prod_rules.txt action_table.txt goto_table.txt
+  --
+  when writtenBool generateAutomaton
+
+  -- 3. Load automaton files (prod_rules/action_table/goto_table.txt)
+  (actionTbl, gotoTbl, prodRules) <-
+    loadAutomaton grammarFileName actionTblFileName gotoTblFileName
+
+  -- 4. Run the automaton
+  if null actionTbl || null gotoTbl || null prodRules
+    then do let hashFile = getHashFileName specFileName
+            putStrLn $ "Delete " ++ hashFile
+            removeIfExists hashFile
+            error $ "Error: Empty automation: please rerun"
+    else do ast <- runAutomatonHaskell flag
+                     (AutomatonSpec {
+                       am_initState=initState,
+                       am_actionTbl=actionTbl,
+                       am_gotoTbl=gotoTbl,
+                       am_prodRules=prodRules,
+                       am_parseFuns=pFunList,
+                       am_lexerSpec=chumLexerSpec parserSpec})
+                     init_lp_state haskellOption
+            -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
+            return ast
+
+  where
+    specFileName      = parserSpecFile parserSpec  -- e.g., mygrammar.grm
+    grammarFileName   = grammarFile    parserSpec  --       prod_rules.txt
+    actionTblFileName = actionTblFile  parserSpec  --       action_table.txt
+    gotoTblFileName   = gotoTblFile    parserSpec  --       goto_table.txt 
+    
+    sSym          = startSymbol parserSpec
+    tokenAttrList = tokenPrecAssoc parserSpec
+
+    tokenAttrs    = toTokenAttrs tokenAttrList
+    tokenAttrsStr = show tokenAttrs
+    
+    pSpecList = map (\(f,s,t)->f) (parserSpecList parserSpec)
+    pFunList  = map (\(f,s,t)->s) (parserSpecList parserSpec)
+    pPrecList = map (\(f,s,t)->t) (parserSpecList parserSpec)
+
+    prodRuleAttrs = toProdRuleAttrs tokenAttrs pPrecList
+    prodRuleAttrsStr = show prodRuleAttrs
+
+    generateAutomaton = do
+      exitCode <- rawSystem "stack"
+                  [ "exec", "--",
+                    "yapb-exe", specFileName, "-output",
+                    grammarFileName, actionTblFileName, gotoTblFileName
+                  ]
+      case exitCode of
+        ExitFailure code -> exitWith exitCode
+        ExitSuccess -> putStrLn ("Successfully generated: " ++
+                                 actionTblFileName ++ ", "  ++
+                                 gotoTblFileName ++ ", " ++
+                                 grammarFileName);
+
+-- | Utitility for parsing
+
+toTokenAttrs :: TokenPrecAssoc -> TokenAttrs
+toTokenAttrs tokenSpec = TokenAttrs (toTokenAttrs' tokenSpec 1)
+  where
+    toTokenAttrs' [] n = []
+    toTokenAttrs' ((assoc, tokenPlaceholderList):tokenSpec) n =
+      [ (tokenOrPlaceholder, (assoc, n)) | tokenOrPlaceholder <- tokenPlaceholderList ]
+        ++ toTokenAttrs' tokenSpec (n+1)
+
+toProdRuleAttrs :: TokenAttrs -> ProdRulePrecs -> ProdRuleAttrs
+toProdRuleAttrs tokenAttrs prodRulePrecs = ProdRuleAttrs (toProdRuleAttrs' prodRulePrecs 0)
+  where
+    TokenAttrs tokenAttrs' = tokenAttrs
+    
+    toProdRuleAttrs' [] n = []
+    
+    toProdRuleAttrs' (Nothing:prodRulePrecs) n =
+      toProdRuleAttrs' prodRulePrecs (n+1)
+      
+    toProdRuleAttrs' ((Just tokenOrPlaceholder):prodRulePrecs) n =
+      case [ (assoc, prec)
+           | (tokenOrPlaceholder', (assoc, prec)) <- tokenAttrs'
+           , tokenOrPlaceholder==tokenOrPlaceholder' ] of
+        [] -> error $ "The production rule #" ++ show n ++ " refers to "
+                        ++ tokenOrPlaceholder ++ " but not found"
+        ((assoc,prec):_) -> (n,(assoc,prec)) : toProdRuleAttrs' prodRulePrecs (n+1)
+
+
+--
+removeIfExists :: FilePath -> IO ()
+removeIfExists fileName = removeFile fileName `catch` handleExists
+  where handleExists e
+          | isDoesNotExistError e = return ()
+          | otherwise = throwIO e
+
+--------------------------------------------------------------------------------
 -- | Computing candidates
+--------------------------------------------------------------------------------
 
 data Candidate =     -- Todo: data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol String
@@ -1502,3 +1576,8 @@ concatStrList (str:strs) = str ++ " " ++ concatStrList strs
 --   successfullyParsed)
 --   `catch` \e -> case e :: LexError of _ -> handleLexError
 --   `catch` \e -> case e :: ParseError token ast of _ -> handleParseError isSimple e)    
+
+-- Utilities
+debug :: Bool -> String -> a -> a
+debug flag msg x = if flag then trace msg x else x
+

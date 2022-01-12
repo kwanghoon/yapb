@@ -4,13 +4,13 @@ import Prelude hiding (EQ)
 import CommonParserUtil
 import Token
 
-mkFn :: Token -> (String -> Maybe Token)
-mkFn tok = \text -> Just tok
+mkFn :: Token -> LexAction Token IO () -- (String -> Maybe Token)
+mkFn tok = \text -> return $ Just tok
 
-skip :: String -> Maybe Token
-skip = \text -> Nothing
+skip :: LexAction Token IO ()          -- String -> Maybe Token
+skip = \text -> return $ Nothing
 
-lexerSpec :: LexerSpec Token
+lexerSpec :: LexerSpec Token IO ()
 lexerSpec = LexerSpec
   {
     endOfToken    = END_OF_TOKEN,

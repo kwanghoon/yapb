@@ -12,7 +12,7 @@ rule prodRule action              = (prodRule, action, Nothing  )
 ruleWithPrec prodRule prec action = (prodRule, action, Just prec)
 
 --
-parserSpec :: ParserSpec Token AST
+parserSpec :: ParserSpec Token AST IO ()
 parserSpec = ParserSpec
   {
     startSymbol = "Expr'",
@@ -28,32 +28,32 @@ parserSpec = ParserSpec
     
     parserSpecList =
     [
-      rule "Expr' -> Expr" (\rhs -> get rhs 1),
+      rule "Expr' -> Expr" (\rhs -> return $ get rhs 1),
 
       rule "Expr -> Expr + Expr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.ADD (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
       rule "Expr -> Expr - Expr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.SUB (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
       rule "Expr -> Expr * Expr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.MUL (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
       rule "Expr -> Expr / Expr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.DIV (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
-      rule "Expr -> ( Expr )" (\rhs -> get rhs 2),
+      rule "Expr -> ( Expr )" (\rhs -> return $ get rhs 2),
       
       ruleWithPrec "Expr -> - Expr" "UMINUS"    -- Expr -> -Expr %prec UMINUS
-        (\rhs -> toAstExpr (
-          BinOp Expr.SUB (Lit 0) (fromAstExpr (get rhs 2))) ),
+        (\rhs -> return $ toAstExpr (
+                             BinOp Expr.SUB (Lit 0) (fromAstExpr (get rhs 2))) ),
       
       rule "Expr -> integer_number"
-        (\rhs -> toAstExpr (Lit (read (getText rhs 1))) )
+        (\rhs -> return $ toAstExpr (Lit (read (getText rhs 1))) )
 
     ],
     

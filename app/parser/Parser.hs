@@ -10,7 +10,7 @@ rule prodRule action              = (prodRule, action, Nothing  )
 ruleWithPrec prodRule action prec = (prodRule, action, Just prec)
 
 --
-parserSpec :: ParserSpec Token AST
+parserSpec :: ParserSpec Token AST IO ()
 parserSpec = ParserSpec
   {
     startSymbol = "SeqExpr'",
@@ -21,45 +21,45 @@ parserSpec = ParserSpec
     
     parserSpecList =
     [
-      rule "SeqExpr' -> SeqExpr" (\rhs -> get rhs 1),
+      rule "SeqExpr' -> SeqExpr" (\rhs -> return $ get rhs 1),
 
       rule "SeqExpr -> SeqExpr ; AssignExpr"
-        (\rhs -> toAstSeq (
-          fromAstSeq (get rhs 1) ++ [fromAstExpr (get rhs 3)]) ),
+        (\rhs -> return $ toAstSeq (
+                            fromAstSeq (get rhs 1) ++ [fromAstExpr (get rhs 3)]) ),
       
-      rule "SeqExpr -> AssignExpr" (\rhs -> toAstSeq [fromAstExpr (get rhs 1)]),
+      rule "SeqExpr -> AssignExpr" (\rhs -> return $ toAstSeq [fromAstExpr (get rhs 1)]),
       
       rule "AssignExpr -> identifier = AssignExpr"
-        (\rhs -> toAstExpr (Assign (getText rhs 1) (fromAstExpr (get rhs 3))) ),
+        (\rhs -> return $ toAstExpr (Assign (getText rhs 1) (fromAstExpr (get rhs 3))) ),
       
-      rule "AssignExpr -> AdditiveExpr" (\rhs -> get rhs 1),
+      rule "AssignExpr -> AdditiveExpr" (\rhs -> return $ get rhs 1),
 
       rule "AdditiveExpr -> AdditiveExpr + MultiplicativeExpr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.ADD (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
       rule "AdditiveExpr -> AdditiveExpr - MultiplicativeExpr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.SUB (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
-      rule "AdditiveExpr -> MultiplicativeExpr" (\rhs -> get rhs 1),
+      rule "AdditiveExpr -> MultiplicativeExpr" (\rhs -> return $ get rhs 1),
 
       rule "MultiplicativeExpr -> MultiplicativeExpr * PrimaryExpr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.MUL (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
       rule "MultiplicativeExpr -> MultiplicativeExpr / PrimaryExpr"
-        (\rhs -> toAstExpr (
+        (\rhs -> return $ toAstExpr (
           BinOp Expr.DIV (fromAstExpr (get rhs 1)) (fromAstExpr (get rhs 3))) ),
 
-      rule "MultiplicativeExpr -> PrimaryExpr" (\rhs -> get rhs 1),
+      rule "MultiplicativeExpr -> PrimaryExpr" (\rhs -> return $ get rhs 1),
       
-      rule "PrimaryExpr -> identifier" (\rhs -> toAstExpr (Var (getText rhs 1)) ),
+      rule "PrimaryExpr -> identifier" (\rhs -> return $ toAstExpr (Var (getText rhs 1)) ),
 
       rule "PrimaryExpr -> integer_number"
-        (\rhs -> toAstExpr (Lit (read (getText rhs 1))) ),
+        (\rhs -> return $ toAstExpr (Lit (read (getText rhs 1))) ),
 
-      rule "PrimaryExpr -> ( AssignExpr )" (\rhs -> get rhs 2)
+      rule "PrimaryExpr -> ( AssignExpr )" (\rhs -> return $ get rhs 2)
     ],
     
     baseDir        = "./",
