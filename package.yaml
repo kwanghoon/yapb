@@ -22,6 +22,7 @@ description:         A programmable LALR(1) parser builder system. Please see th
 dependencies:
 - base >= 4.7 && < 5
 - hspec
+- transformers
 
 # --------------------------------------------------
 # -- Main library: YAPB (Yet Another Parser Builder)

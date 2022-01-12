@@ -4,6 +4,7 @@ import Attrs
 import CommonParserUtil
 import Token
 import Expr
+import Lexer
 
 
 -- | Utility
@@ -22,6 +23,8 @@ parserSpec = ParserSpec
     , (Attrs.Left,     [ "*", "/" ])           -- %left "*" "/"
     , (Attrs.Right,    [ "UMINUS" ])           -- %right UMINUS
     ],
+
+    chumLexerSpec = lexerSpec,
     
     parserSpecList =
     [

@@ -83,12 +83,12 @@ spec = hspec $ do
     it ("[test4.sml:simple] " ++ test4_sml) $ do
       results <- computeCand False test4_sml "" True
       results `shouldBe`
-        [ParseError ["y at (1, 6): identifier","=> at (1, 8): =>","$ at (1, 11): $"]]
+        [ParseError "y => "]
 
     it ("[test4.sml:nested] " ++ test4_sml) $ do
       results <- computeCand False test4_sml "" False
       results `shouldBe`
-        [ParseError ["y at (1, 6): identifier","=> at (1, 8): =>","$ at (1, 11): $"]]
+        [ParseError "y => "]
 
     let lexerror = "x != y "
     

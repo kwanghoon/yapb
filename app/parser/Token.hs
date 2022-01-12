@@ -41,3 +41,5 @@ instance TokenInterface Token where
       Just str -> str
   
 
+  isEOT END_OF_TOKEN = True
+  isEOT _            = False  

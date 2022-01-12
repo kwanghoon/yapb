@@ -1,10 +1,10 @@
-module ReadGrammar where
+module ReadGrammar(readGrammar, conversion) where
 
 import CFG
-
 import Data.List(intersperse)
+
 import System.IO
-import System.Environment (getArgs)
+
 
 data LitGrm = LitGrm { start :: Maybe String, rules :: [(String, [[String]])], rhss :: [[String]] }
 
@@ -93,25 +93,11 @@ rep prestate  (s:ss) = do
       in return startLhsRhsPairList { rules=(lhs,rhss_):rules_, rhss=[] }
     (StartSymbol s, Rhs rhss) -> error $ "rep: StartSymbol " ++ s ++ " can't change to Rule"
 
-----
--- For testing with grm/polyrpc.lgrm
--- 
-
-test fun = do
-  args <- getArgs
-  repTest fun args
-
-repTest fun [] = return ()
-repTest fun (arg:args) = do
-  text <- readFile arg
-  fun text
-  repTest fun args
-
-parsing text = do
-  startLhsRhssPairList <- rep NoState (lines text)
-  let startsymbol = start startLhsRhssPairList
-  let lhsRhssPairList = rules startLhsRhssPairList
-  mapM_ (\(lhs,rhss) -> prLhsRhss lhs rhss) lhsRhssPairList
+-- parsing text = do
+--   startLhsRhssPairList <- rep NoState (lines text)
+--   let startsymbol = start startLhsRhssPairList
+--   let lhsRhssPairList = rules startLhsRhssPairList
+--   mapM_ (\(lhs,rhss) -> prLhsRhss lhs rhss) lhsRhssPairList
 
 prLhsRhss :: String -> [[String]] -> IO ()
 prLhsRhss lhs rhss = do
@@ -134,4 +120,5 @@ conversion text = do
         -- May replace prodRuleToStr with show
         putStrLn $ concat (intersperse ",\n " (map prodRuleToStr prodrules))  
         putStrLn $ "]"
+
     

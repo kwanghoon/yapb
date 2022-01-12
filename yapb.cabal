@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0d50f6d3962c310b2c8af1010deadca38c600bdb1dee843ae15069937dba5242
+-- hash: d8b945b1e8fb04f36f1deefb1ad512e25647aa3290e10d4bbd6dd93531be3929
 
 name:           yapb
 version:        0.1.4
@@ -63,6 +63,7 @@ library
     , network >=3.1.1 && <3.2
     , process >=1.6.5 && <1.7
     , regex-tdfa >=1.3.1 && <1.4
+    , transformers
   default-language: Haskell2010
 
 executable ambiguous-exe
@@ -83,6 +84,7 @@ executable ambiguous-exe
       base >=4.7 && <5
     , hspec
     , regex-tdfa
+    , transformers
     , yapb
   default-language: Haskell2010
 
@@ -96,6 +98,7 @@ executable conv-exe
   build-depends:
       base >=4.7 && <5
     , hspec
+    , transformers
     , yapb
   default-language: Haskell2010
 
@@ -117,6 +120,7 @@ executable parser-exe
       base >=4.7 && <5
     , hspec
     , regex-tdfa
+    , transformers
     , yapb
   default-language: Haskell2010
 
@@ -138,6 +142,7 @@ executable syncomp-exe
       base >=4.7 && <5
     , hspec
     , regex-tdfa
+    , transformers
     , yapb
   default-language: Haskell2010
 
@@ -151,6 +156,7 @@ executable yapb-exe
   build-depends:
       base >=4.7 && <5
     , hspec
+    , transformers
     , yapb
   default-language: Haskell2010
 
@@ -166,5 +172,6 @@ test-suite yapb-test
       base >=4.7 && <5
     , hspec
     , process
+    , transformers
     , yapb
   default-language: Haskell2010

@@ -37,3 +37,6 @@ instance TokenInterface Token where
     case findTok tok tokenStrList of
       Nothing  -> error ("fromToken: " ++ show tok)
       Just str -> str
+      
+  isEOT END_OF_TOKEN = True
+  isEOT _            = False  
