@@ -40,7 +40,7 @@ computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (d
                    debugFlag=debug,
                    searchMaxLevel=maxLevel,
                    simpleOrNested=isSimpleMode,
-                   postTerminalList=[],  -- terminalListAfterCursor from lexing programTextAfterCursor
+                   postTerminalList=[],  -- terminalListAfterCursor is set to []!
                    nonterminalToStringMaybe=Nothing})
                parseError))
 
