@@ -393,21 +393,32 @@ currentState :: Stack token ast -> Int
 currentState (StkState i : stack) = i
 currentState _                    = error "No state found in the stack top"
 
-lookupTable :: (Eq a, Show a) => [(a,b)] -> a -> String -> Maybe b
-lookupTable tbl key msg =   
-  case [ val | (key', val) <- tbl, key==key' ] of
-    [] -> Nothing -- error $ msg ++ " : " ++ show key
+lookupTable :: (Eq a, Show a) => [(a,b)] -> a -> Maybe b
+lookupTable tbl key =   
+  case [val | (key', val) <- tbl, key==key'] of
+    []    -> Nothing
     (h:_) -> Just h
 
 lookupActionTable :: TokenInterface token => ActionTable -> Int -> (Terminal token) -> Maybe Action
 lookupActionTable actionTbl state terminal =
   lookupTable actionTbl (state,tokenTextFromTerminal terminal)
-     ("Not found in the action table: " ++ terminalToString terminal) 
 
 lookupGotoTable :: GotoTable -> Int -> String -> Maybe Int
 lookupGotoTable gotoTbl state nonterminalStr =
   lookupTable gotoTbl (state,nonterminalStr)
-     ("Not found in the goto table: ")
+
+errorKeyword :: String  -- A reserved terminal name : A -> error
+errorKeyword = "error"
+
+lookupActionTableWithError :: ActionTable -> Int -> Maybe Action
+lookupActionTableWithError actionTbl state =
+  case lookupTable actionTbl (state,errorKeyword) of
+    Just (Shift toState) -> Just (Shift toState)
+    
+    Just action          -> error ("[lookupActionTableWithError] " ++ show action) $
+                            Nothing
+                            
+    Nothing              -> Nothing
 
 
 -- Note: take 1th, 3rd, 5th, ... of 2*len elements from stack and reverse it!
@@ -480,6 +491,9 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
     run maybeTerminal stack _maybeStatus = do
       let state = currentState stack
       -- let terminal = head terminalList
+
+      -- Save the current state in case of going back
+      prevState <- ST.get
       
       terminal <-
         case maybeTerminal of
@@ -504,27 +518,47 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
 
         Nothing -> 
           debug flag ("lookActionTable failed (1st) with: " ++ show (terminalToString terminal)) $
-          case haskellOption of
-            Just extraToken -> do
-              let terminal_close_brace = Terminal
-                                          (fromToken extraToken)
-                                            (terminalToLine terminal)
-                                              (terminalToCol terminal)
-                                                (Just extraToken)
-              case lookupActionTable actionTbl state terminal_close_brace of
-                Just action -> 
-                  -- putStrLn $ terminalToString terminal_close_brace {- debug -}
-                  debug flag ("lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace) $
-                  do runAction state terminal_close_brace action stack maybeStatus
-
-                Nothing -> 
-                  debug flag ("lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace) $
-                  do lp_state <- ST.get
-                     throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
+          
+          case lookupActionTableWithError actionTbl state of
+            Just action -> do
+              -- errorTerminal intended to share the same (line,col) as terminal
+              let (_, line, col, _) = prevState
+              let errorTerminal     = Terminal errorKeyword line col Nothing
+              
+              -- Restore the current state
+              ST.put prevState
+              
+              -- run this action (Shift toState)
+              runAction state errorTerminal action stack maybeStatus
 
             Nothing ->
+              -- No more way to proceed now!
               do lp_state <- ST.get
                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
+
+          -- | Specialized to Haskell lexer to handling closed braces
+          
+          -- case haskellOption of
+          --   Just extraToken -> do
+          --     let terminal_close_brace = Terminal
+          --                                 (fromToken extraToken)
+          --                                   (terminalToLine terminal)
+          --                                     (terminalToCol terminal)
+          --                                       (Just extraToken)
+          --     case lookupActionTable actionTbl state terminal_close_brace of
+          --       Just action -> 
+          --         -- putStrLn $ terminalToString terminal_close_brace {- debug -}
+          --         debug flag ("lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace) $
+          --         do runAction state terminal_close_brace action stack maybeStatus
+
+          --       Nothing -> 
+          --         debug flag ("lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace) $
+          --         do lp_state <- ST.get
+          --            throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
+
+          --   Nothing ->
+          --     do lp_state <- ST.get
+          --        throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
 
     -- separated to support the haskell layout rule
     runAction state terminal action stack maybeStatus =

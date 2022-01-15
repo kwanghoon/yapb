@@ -23,6 +23,7 @@ dependencies:
 - base >= 4.7 && < 5
 - hspec
 - transformers
+- mtl
 
 # --------------------------------------------------
 # -- Main library: YAPB (Yet Another Parser Builder)
@@ -132,6 +133,24 @@ executables:
     source-dirs:
     - app/ambiguous
     - app/ambiguous/ast
+    
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - regex-tdfa
+    - yapb
+
+# ---------------------------------
+# -- Example3: An error handling
+# ---------------------------------
+  error-exe:
+    main:                Main.hs
+    
+    source-dirs:
+    - app/error
+    - app/error/ast
     
     ghc-options:
     - -threaded
