@@ -3,7 +3,6 @@ module Parser where
 import CommonParserUtil
 import Token
 import Expr
-import Lexer
 
 -- | Utility
 rule prodRule action              = (prodRule, action, Nothing  )
@@ -19,8 +18,6 @@ parserSpec = ParserSpec
     
     tokenPrecAssoc = [],
 
-    chumLexerSpec = lexerSpec,
-    
     parserSpecList =
     [
       rule "Start' -> Start" noAction,

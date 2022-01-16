@@ -4,9 +4,9 @@ import Attrs
 import CommonParserUtil
 import Token
 import Expr
-import Lexer
 
 import Control.Monad.Trans (lift)
+import qualified Control.Monad.Trans.State.Lazy as ST
 
 -- | Utility
 rule prodRule action              = (prodRule, action, Nothing  )
@@ -25,8 +25,6 @@ parserSpec = ParserSpec
     , (Attrs.Right,    [ "UMINUS" ])           -- %right UMINUS
     ],
 
-    chumLexerSpec = lexerSpec,
-    
     parserSpecList =
     [
       rule "Expr' -> Expr" (\rhs -> return $ get rhs 1),
@@ -57,7 +55,10 @@ parserSpec = ParserSpec
         (\rhs -> return $ toAstExpr (Lit (read (getText rhs 1))) ),
 
       rule "Expr -> error"
-        (\rhs -> do lift $ putStrLn "Expr -> error";
+        (\rhs -> do (_,line,col,text) <- ST.get
+                    lift $ putStrLn $ "Expr -> error" ++ " at Line "
+                                        ++ show line ++ ", Column " ++ show col
+                    lift $ putStrLn $ " : " ++ take 77 text  -- 80 columns
                     return $ toAstExpr (Lit 0) )
       
     ],

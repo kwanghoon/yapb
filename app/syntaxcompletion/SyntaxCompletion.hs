@@ -26,7 +26,7 @@ maxLevel = 10000
 computeCand :: Bool -> String -> String -> Bool -> IO [EmacsDataItem]
 computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (do
   {- 1. Parsing -}
-  ((do ast <- parsing debug parserSpec ((),1,1,programTextUptoCursor)
+  ((do ast <- parsing debug parserSpec ((),1,1,programTextUptoCursor) (aLexer lexerSpec)
        successfullyParsed)
 
     `catch` \parseError ->

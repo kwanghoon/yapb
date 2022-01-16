@@ -3,10 +3,10 @@ module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
   , LexerParserState, Line, Column
   , HandleParseError(..), defaultHandleParseError
-  , matchLexSpec, LexAction
+  , matchLexSpec, LexAction, aLexer
   , lexing, lexingWithLineColumn, _lexingWithLineColumn
   , parsing, ParseAction
-  , runAutomaton, parsingHaskell, runAutomatonHaskell
+  , initState, runAutomaton
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
   , successfullyParsed, handleLexError, handleParseError)
@@ -70,12 +70,12 @@ type LexerParserMonad m a = ST.StateT (LexerParserState a) m
 type RegExpStr    = String
 type LexAction token m a = String -> LexerParserMonad m a (Maybe token)
 
-type LexerSpecList token m a = [(RegExpStr, LexAction token m a)]
+type RegexprActionList token m a = [(RegExpStr, LexAction token m a)]
 
 data LexerSpec token m a =
   LexerSpec
     { endOfToken    :: token,
-      lexerSpecList :: LexerSpecList token m a }
+      lexerSpecList :: RegexprActionList token m a }
 
 -- | Token precedence and associativity: TokenPrecAssoc token
 -- |
@@ -103,7 +103,6 @@ type ParserSpecList token ast m a = [(ProdRuleStr, ParseAction token ast m a, Pr
 data ParserSpec token ast m a=
   ParserSpec { startSymbol    :: String,
                tokenPrecAssoc :: TokenPrecAssoc,
-               chumLexerSpec  :: LexerSpec token m a,
                parserSpecList :: ParserSpecList token ast m a,
                baseDir        :: String,   -- ex) ./
                actionTblFile  :: String,   -- ex) actiontable.txt
@@ -193,7 +192,7 @@ type MatchedToken token = (String, Maybe token, MatchedSpec)
 --------------------------------------------------------------------------------
 
 matchLexSpec :: (Monad m, TokenInterface token) =>
-  Bool -> token -> LexerSpecList token m a      -- token => End Of token!
+  Bool -> token -> RegexprActionList token m a      -- token => End Of token!
        -> LexerParserMonad m a (MatchedToken token)
 
 matchLexSpec debugFlag eot lexerspec =
@@ -204,7 +203,7 @@ matchLexSpec debugFlag eot lexerspec =
        :: (Monad m, TokenInterface token) =>
           Bool
           -> token
-          -> LexerSpecList token m a
+          -> RegexprActionList token m a
           -> ST.StateT (LexerParserState a) m (MatchedToken token)
      mls debugFlag eot lexerspec =
        do (state_parm, line, col, text) <- ST.get
@@ -214,7 +213,7 @@ matchLexSpec debugFlag eot lexerspec =
        :: (Monad m, TokenInterface token) =>
           Bool
           -> token
-          -> LexerSpecList token m a
+          -> RegexprActionList token m a
           -> (LexerParserState a)
           -> ST.StateT (LexerParserState a) m (MatchedToken token)
      mlsSub debugFlag eot lexerspec (state_parm, line, col, []) =
@@ -264,7 +263,7 @@ moveLineCol line col (ch:text)   = moveLineCol line (col+1) text
 
 -- | Repeat matchLexSpec until all tokens are retrieved
 repMatchLexSpec :: (Monad m, TokenInterface token) =>
-  Bool -> token -> LexerSpecList token m a ->     -- token => End Of token!
+  Bool -> token -> RegexprActionList token m a ->     -- token => End Of token!
   LexerParserMonad m a [Terminal token]
 repMatchLexSpec debugFlag eot lexerspec  =
   repMLS debugFlag eot lexerspec []
@@ -284,6 +283,30 @@ repMatchLexSpec debugFlag eot lexerspec  =
                        (Terminal text line col maybeToken : terminalList)
 
            Nothing    -> repMLS debugFlag eot lexerspec terminalList
+
+-- | Getting the next token
+
+type Lexer m a token = LexerParserMonad m a (Terminal token)
+type BoolToLexer m a token = Bool -> LexerParserMonad m a (Terminal token)
+
+aLexer
+  :: (Monad m, TokenInterface token) =>
+     LexerSpec token m a -> 
+     Bool -> LexerParserMonad m a (Terminal token)
+aLexer lexerSpec =
+  let eot = endOfToken lexerSpec
+      regexprActionList = lexerSpecList lexerSpec
+
+      boolToLexer flag = 
+        do (_, line, col, _) <- ST.get
+
+           (matchedText, maybeTok, _) <- matchLexSpec flag eot regexprActionList
+
+           case maybeTok of
+             Nothing  -> boolToLexer flag 
+             Just tok -> return (Terminal matchedText line col maybeTok)
+             
+  in boolToLexer
 
 -- | Lexing only intefaces
 lexing :: (Monad m, TokenInterface token) =>
@@ -375,8 +398,7 @@ data AutomatonSpec token ast m a =
     am_gotoTbl :: GotoTable,
     am_prodRules :: ProdRules,
     am_parseFuns :: ParseActionList token ast m a,
-    am_initState :: Int,
-    am_lexerSpec :: LexerSpec token m a
+    am_initState :: Int
   }
 
 initState = 0
@@ -413,10 +435,7 @@ errorKeyword = "error"
 lookupActionTableWithError :: ActionTable -> Int -> Maybe Action
 lookupActionTableWithError actionTbl state =
   case lookupTable actionTbl (state,errorKeyword) of
-    Just (Shift toState) -> Just (Shift toState)
-    
-    Just action          -> error ("[lookupActionTableWithError] " ++ show action) $
-                            Nothing
+    Just action          -> Just action   -- This can be either Shift or Reduce!
                             
     Nothing              -> Nothing
 
@@ -431,34 +450,25 @@ revTakeRhs n (_:nt:stack) = revTakeRhs (n-1) stack ++ [nt]
 -- Automaton
 
 runAutomaton
-  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-     Bool -> AutomatonSpec token ast IO a -> LexerParserState a -> IO ast
-runAutomaton flag amSpec init_lp_state = runAutomatonHaskell flag amSpec init_lp_state Nothing
-
-runAutomatonHaskell
-  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-     Bool -> AutomatonSpec token ast IO a -> LexerParserState a -> p -> IO ast
-runAutomatonHaskell flag amSpec init_lp_state haskellOption =
+  :: (TokenInterface token,
+      Typeable token, Typeable ast, Typeable a,
+      Show token, Show ast) =>
+     Bool -> AutomatonSpec token ast IO a ->
+     LexerParserState a -> BoolToLexer IO a token -> IO ast
+runAutomaton flag amSpec init_lp_state lexer =
   do maybeConfig <- readConfig
   
      flag <- case maybeConfig of
                Nothing -> return flag
                Just config -> return $ config_DEBUG config
 
-     let lexerspec = am_lexerSpec amSpec
-     
-     let nextTerminal = do
-           (_, line, col, _) <- ST.get
-           (matchedText, maybeTok, _) <-
-             matchLexSpec flag (endOfToken lexerspec) (lexerSpecList lexerspec)
-           case maybeTok of
-             Nothing -> nextTerminal
-             Just tok -> return (Terminal matchedText line col maybeTok)
-
-     ST.evalStateT (runYapbAutomaton flag amSpec nextTerminal Nothing) init_lp_state
-
+     ST.evalStateT (runYapbAutomaton flag amSpec (lexer flag)) init_lp_state
   
-runYapbAutomaton :: (Monad m, TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
+runYapbAutomaton
+  :: (Monad m,
+      TokenInterface token,
+      Typeable token, Typeable ast, Typeable a,
+      Show token, Show ast) =>
   -- debug flag
   Bool ->
   
@@ -468,9 +478,6 @@ runYapbAutomaton :: (Monad m, TokenInterface token, Typeable token, Typeable ast
   -- dynamic part
   ST.StateT (LexerParserState a) m (Terminal token) ->
   
-  -- haskell parser specific option
-  Maybe token ->
-  
   -- AST
   ST.StateT (LexerParserState a) m ast
   
@@ -479,9 +486,8 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
       am_actionTbl=actionTbl,
       am_gotoTbl=gotoTbl,
       am_prodRules=prodRules,
-      am_parseFuns=pFunList,
-      am_lexerSpec=lexerSpec
-   }) nextTerminal haskellOption =
+      am_parseFuns=pFunList
+   }) nextTerminal =
 
       do let initStack = push (StkState initState) emptyStack
          run Nothing initStack Nothing
@@ -535,30 +541,6 @@ runYapbAutomaton flag (rm_spec @ AutomatonSpec {
               -- No more way to proceed now!
               do lp_state <- ST.get
                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
-
-          -- | Specialized to Haskell lexer to handling closed braces
-          
-          -- case haskellOption of
-          --   Just extraToken -> do
-          --     let terminal_close_brace = Terminal
-          --                                 (fromToken extraToken)
-          --                                   (terminalToLine terminal)
-          --                                     (terminalToCol terminal)
-          --                                       (Just extraToken)
-          --     case lookupActionTable actionTbl state terminal_close_brace of
-          --       Just action -> 
-          --         -- putStrLn $ terminalToString terminal_close_brace {- debug -}
-          --         debug flag ("lookActionTable succeeded (2nd) with: " ++ terminalToString terminal_close_brace) $
-          --         do runAction state terminal_close_brace action stack maybeStatus
-
-          --       Nothing -> 
-          --         debug flag ("lookActionTable failed (2nd) with: " ++ terminalToString terminal_close_brace) $
-          --         do lp_state <- ST.get
-          --            throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
-
-          --   Nothing ->
-          --     do lp_state <- ST.get
-          --        throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
 
     -- separated to support the haskell layout rule
     runAction state terminal action stack maybeStatus =
@@ -620,14 +602,9 @@ prlevel n = take n (let spaces = ' ' : spaces in spaces)
 --------------------------------------------------------------------------------
 
 parsing  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-  Bool -> ParserSpec token ast IO a -> LexerParserState a -> IO ast
+  Bool -> ParserSpec token ast IO a -> LexerParserState a -> BoolToLexer IO a token -> IO ast
 
-parsing flag parserSpec init_lp_state =
-  parsingHaskell flag parserSpec init_lp_state Nothing
-  
-parsingHaskell :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-           Bool -> ParserSpec token ast IO a -> LexerParserState a -> Maybe token -> IO ast
-parsingHaskell flag parserSpec init_lp_state haskellOption = do
+parsing flag parserSpec init_lp_state lexer = do
   -- 1. Save production rules (in the parser spec, e.g., Parser.hs)
   --    to a grammar file.
   writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr
@@ -650,15 +627,14 @@ parsingHaskell flag parserSpec init_lp_state haskellOption = do
             putStrLn $ "Delete " ++ hashFile
             removeIfExists hashFile
             error $ "Error: Empty automation: please rerun"
-    else do ast <- runAutomatonHaskell flag
+    else do ast <- runAutomaton flag
                      (AutomatonSpec {
                        am_initState=initState,
                        am_actionTbl=actionTbl,
                        am_gotoTbl=gotoTbl,
                        am_prodRules=prodRules,
-                       am_parseFuns=pFunList,
-                       am_lexerSpec=chumLexerSpec parserSpec})
-                     init_lp_state haskellOption
+                       am_parseFuns=pFunList})
+                     init_lp_state lexer
             -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
             return ast
 
@@ -1425,9 +1401,6 @@ defaultHandleParseError = HandleParseError {
   }
 
 -- | handleParseError
--- handleParseError :: TokenInterface token => Bool -> Int -> Bool -> [Terminal token] -> ParseError token ast -> IO [EmacsDataItem]
--- handleParseError flag maxLevel isSimple terminalListAfterCursor parseError =
---   unwrapParseError flag maxLevel isSimple terminalListAfterCursor parseError
   
 handleParseError :: TokenInterface token => HandleParseError token -> ParseError token ast a -> IO [EmacsDataItem]
 handleParseError hpeOption parseError =

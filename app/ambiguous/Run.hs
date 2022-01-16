@@ -15,7 +15,8 @@ doProcess verbose fileName = do
   -- when (verbose) $ putStrLn "Lexing..."
   -- terminalList <- lexing lexerSpec text
   when (verbose) $ putStrLn "Parsing..."
-  exprSeqAst <- parsing False parserSpec ((), 1, 1, text)
+  exprSeqAst <- parsing False parserSpec ((), 1, 1, text) (aLexer lexerSpec)
+  
   when (verbose) $ putStrLn "Pretty Printing..."
   when (verbose) $ putStrLn (pprintAst exprSeqAst)
   return (pprintAst exprSeqAst)

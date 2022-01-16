@@ -5,6 +5,7 @@ Applications using YAPB
  - yapb/app/syntaxcompletion
  - yapb/app/parser
  - yapb/app/ambiguous
+ - yapb/app/error
  - sbparser
  - happy/hslexer
  - c11parser
