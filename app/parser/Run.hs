@@ -2,6 +2,7 @@ module Run where
 
 import CommonParserUtil
 
+import TokenInterface
 import Lexer
 import Terminal
 import Parser
@@ -18,7 +19,7 @@ doProcess verbose fileName = do
   let debugFlag = False
         
   exprSeqAst <-
-    parsing debugFlag parserSpec ((), 1, 1, text) (aLexer lexerSpec)
+    parsing debugFlag parserSpec ((), 1, 1, text) (aLexer lexerSpec) (fromToken (endOfToken lexerSpec))
   
   when (verbose) $ putStrLn "Pretty Printing..."
   when (verbose) $ putStrLn (pprintAst exprSeqAst)

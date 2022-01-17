@@ -604,12 +604,12 @@ prlevel n = take n (let spaces = ' ' : spaces in spaces)
 --------------------------------------------------------------------------------
 
 parsing  :: (TokenInterface token, Typeable token, Typeable ast, Typeable a, Show token, Show ast) =>
-  Bool -> ParserSpec token ast IO a -> LexerParserState a -> BoolToLexer IO a token -> IO ast
+  Bool -> ParserSpec token ast IO a -> LexerParserState a -> BoolToLexer IO a token -> String -> IO ast
 
-parsing flag parserSpec init_lp_state lexer = do
+parsing flag parserSpec init_lp_state lexer eot = do
   -- 1. Save production rules (in the parser spec, e.g., Parser.hs)
   --    to a grammar file.
-  writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr
+  writtenBool <- saveProdRules specFileName sSym pSpecList tokenAttrsStr prodRuleAttrsStr eot
 
   -- 2. Given a grammar file,
   --    run the following command to generate prod_rules/action_table/goto_table files.

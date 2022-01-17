@@ -6,10 +6,13 @@ import System.IO
 import System.Directory
 import CFG
 
-saveProdRules :: String -> String -> [String] -> String -> String -> IO Bool
-saveProdRules fileName startSymbol prodRuleStrs tokenAttrs prodRuleAttrs = do
+saveProdRules :: String -> String -> [String] -> String -> String -> String -> IO Bool
+saveProdRules fileName startSymbol prodRuleStrs tokenAttrs prodRuleAttrs eot = do
   writeOnceWithHash fileName
-    ("(" ++ grmStrLn ++ ",\n" ++ tokenAttrs ++ ",\n" ++ prodRuleAttrs ++ ")\n")
+    ("(" ++ grmStrLn ++ ",\n" ++
+     tokenAttrs ++ ",\n" ++
+     prodRuleAttrs ++ ",\n" ++
+     show eot ++ ")\n")                  -- show eot to have double quotes
   where
     grmStr   = toCFG startSymbol prodRuleStrs
     grmStrLn = grmStr ++ "\n"

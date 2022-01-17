@@ -279,7 +279,7 @@ cgActionCase extsym =
 cgTerminalName extsym = 
   case extsym of
     Symbol (Terminal t) -> cgTerminalName' t
-    EndOfSymbol -> cgNameEndOfSymbol
+    EndOfSymbol eot -> cgNameEndOfSymbol
     _ -> error "cgTerminalName: not a terminal symbol"
     
 cgTerminalName' t =     

@@ -17,16 +17,16 @@ instance Show Symbol where
 isTerminal (Terminal x) = True  
 isTerminal _            = False
   
-data ExtendedSymbol = Symbol Symbol | Epsilon | EndOfSymbol
+data ExtendedSymbol = Symbol Symbol | Epsilon | EndOfSymbol String
     deriving (Eq, Ord)
              
 instance Show ExtendedSymbol where
-  showsPrec p (Symbol sym)    = (++) (show sym)
-  showsPrec p (Epsilon)       = (++) "epsilon"
-  showsPrec p (EndOfSymbol)   = (++) "$"
+  showsPrec p (Symbol sym)      = (++) (show sym)
+  showsPrec p (Epsilon)         = (++) "epsilon"
+  showsPrec p (EndOfSymbol eot) = (++) eot        -- "$"
   
 isExtendedTerminal (Symbol (Terminal x)) = True  
-isExtendedTerminal (EndOfSymbol)         = True  
+isExtendedTerminal (EndOfSymbol eot)     = True  
 isExtendedTerminal _                     = False
 
 isExtendedNonterminal (Symbol (Nonterminal x)) = True  
