@@ -2,10 +2,11 @@
 module CommonParserUtil
   ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
   , LexerParserState, Line, Column
+  , ProdRuleStr, ParseAction, ProdRulePrec
   , HandleParseError(..), defaultHandleParseError
   , matchLexSpec, LexAction, aLexer
   , lexing, lexingWithLineColumn, _lexingWithLineColumn
-  , parsing, ParseAction
+  , parsing
   , initState, runAutomaton
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
@@ -100,7 +101,7 @@ type ProdRulePrecs = [ProdRulePrec]
 
 type ParserSpecList token ast m a = [(ProdRuleStr, ParseAction token ast m a, ProdRulePrec)]
 
-data ParserSpec token ast m a=
+data ParserSpec token ast m a =
   ParserSpec { startSymbol    :: String,
                tokenPrecAssoc :: TokenPrecAssoc,
                parserSpecList :: ParserSpecList token ast m a,
@@ -129,12 +130,13 @@ instance TokenInterface token => Eq (StkElem token ast) where
 
 type Stack token ast = [StkElem token ast]
 
-get :: Stack token ast -> Int -> ast
+get :: TokenInterface token => Stack token ast -> Int -> ast
 get stack i =
   case stack !! (i-1) of
     StkNonterminal (Just ast) _ -> ast
     StkNonterminal Nothing _ -> error $ "get: empty ast in the nonterminal at stack"
-    _ -> error $ "get: out of bound: " ++ show i
+    StkState s -> error $ "get: out of bound: " ++ show i ++ " : state " ++ show s
+    StkTerminal terminal -> error $ "get: out of bound: " ++ show i ++ " : terminal " ++ terminalToSymbol terminal
 
 getText :: Stack token ast -> Int -> String
 getText stack i = 
