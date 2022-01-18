@@ -245,8 +245,9 @@ matchLexSpec debugFlag eot lexerspec =
                      ST.put (state_parm_, line_, col_, post)
 
                      debug debugFlag "" $ 
-                      debug debugFlag (show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
-                       debug debugFlag ("Lexer returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
+
+                      debug debugFlag ("Lexer: - " ++ show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
+                       debug debugFlag ("       - returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
 
                         return (matched, maybeTok, aSpec)
 
