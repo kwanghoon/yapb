@@ -710,10 +710,10 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
           | otherwise = throwIO e
 
 --------------------------------------------------------------------------------
--- | Computing candidates
+-- | Computing candidates (Todo: This should be separated from the automaton part.)
 --------------------------------------------------------------------------------
 
-data Candidate =     -- Todo: data Candidate vs. data EmacsDataItem = ... | Candidate String 
+data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol String
   | NonterminalSymbol String
   deriving Eq
@@ -950,9 +950,13 @@ gs_level (SS_GotoOrShift r gs) = gs
 gs_level (SS_FinalReduce r gs) = gs
 
 --
+type State           = Int
+type LengthOfSymbols = Int
+  
+--
 extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO ([[Candidate]], Bool)
+     CompCandidates token ast -> [Candidate] -> State -> Stack token ast -> IO ([[Candidate]], Bool)
 extendedCompCandidates ccOption symbols state stk = do
   maybeConfig <- readConfig
   case maybeConfig of
@@ -1001,7 +1005,7 @@ extendedCompCandidates ccOption symbols state stk = do
 -- Extended simple candidates
 extendedSimpleCandidates
     :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       CompCandidates token ast -> Int -> Stack token ast -> IO [(Int, Stack token ast, [Candidate])]
+       CompCandidates token ast -> State -> Stack token ast -> IO [(State, Stack token ast, [Candidate])]
        
 extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk 
 
@@ -1009,8 +1013,8 @@ extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk
 -- Extended nested candidates
 extendedNestedCandidates
     :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       CompCandidates token ast -> [(Int, Stack token ast, [Candidate])]
-       -> IO [(Int, Stack token ast, [Candidate])]
+       CompCandidates token ast -> [(State, Stack token ast, [Candidate])]
+       -> IO [(State, Stack token ast, [Candidate])]
        
 extendedNestedCandidates ccOption initStateStkCandsList =
   let f (state, stk, symbols) =
@@ -1056,8 +1060,8 @@ extendedNestedCandidates ccOption initStateStkCandsList =
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast
-     -> IO [(Int, Stack token ast, [Candidate])]
+     CompCandidates token ast -> [Candidate] -> State -> Stack token ast
+     -> IO [(State, Stack token ast, [Candidate])]
 
 repReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
@@ -1266,7 +1270,7 @@ simulShift ccOption symbols state stk =
 
 repGotoOrShift
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> Int -> Stack token ast -> IO [(Int, Stack token ast, [Candidate])]
+     CompCandidates token ast -> [Candidate] -> State -> Stack token ast -> IO [(State, Stack token ast, [Candidate])]
 
 repGotoOrShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
