@@ -127,6 +127,7 @@ instance TokenInterface token => Eq (StkElem token ast) where
   (StkTerminal termi)   == (StkTerminal termj)   =
      tokenTextFromTerminal termi == tokenTextFromTerminal termj
   (StkNonterminal _ si) == (StkNonterminal _ sj) = si == sj
+  leftStkElm            == rightStkElm           = False
 
 type Stack token ast = [StkElem token ast]
 
@@ -449,6 +450,7 @@ lookupActionTableWithError actionTbl state =
 revTakeRhs :: Int -> [a] -> [a]
 revTakeRhs 0 stack = []
 revTakeRhs n (_:nt:stack) = revTakeRhs (n-1) stack ++ [nt]
+revTakeRhs n stack = error "[revTakeRhs] something wrong happened"
 
 -- Automaton
 
@@ -713,15 +715,28 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 -- | Computing candidates (Todo: This should be separated from the automaton part.)
 --------------------------------------------------------------------------------
 
+-- | Candidates
 data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol String
   | NonterminalSymbol String
   deriving Eq
 
+data CandidateTree = CandidateTree Candidate [CandidateTree] deriving (Eq,Show)
+
+type CandidateForest = [CandidateTree]
+
 instance Show Candidate where
   showsPrec p (TerminalSymbol s) = (++) $ "Terminal " ++ s
   showsPrec p (NonterminalSymbol s) = (++) $ "Nonterminal " ++ s
 
+leaf :: Candidate -> CandidateTree
+leaf cand = CandidateTree cand []
+
+leafs :: CandidateTree -> [Candidate]
+leafs (CandidateTree leaf []      ) = [leaf]
+leafs (CandidateTree leaf subtrees) = concat (map leafs subtrees)
+
+-- | Automation information
 data Automaton token ast =
   Automaton {
     actTbl    :: ActionTable,
@@ -729,6 +744,7 @@ data Automaton token ast =
     prodRules :: ProdRules
   }
 
+-- | Computing candidates
 data CompCandidates token ast = CompCandidates {
     cc_debugFlag :: Bool,
     cc_printLevel :: Int,  
@@ -1134,6 +1150,15 @@ repReduce ccOption symbols state stk =
 
                                return $ concat listOfList
 
+simulReduce :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+ CompCandidates token ast
+ -> [Candidate]
+ -> Int  -- Production rule number
+ -> Int  -- of all reducible actions
+ -> Int  -- ith action chosen
+ -> State
+ -> Stack token ast
+ -> IO [(State, Stack token ast, [Candidate])]
 simulReduce ccOption symbols prnum len i state stk =
   let flag      = cc_debugFlag ccOption
       isSimple  = cc_simpleOrNested ccOption
@@ -1191,6 +1216,12 @@ simulReduce ccOption symbols prnum len i state stk =
                do error $ "simulReduce: Unexpected nested mode: "
 
 
+simulGoto :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+ CompCandidates token ast
+ -> [Candidate]
+ -> Int
+ -> [StkElem token ast]
+ -> IO [(State, Stack token ast, [Candidate])]
 simulGoto ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
       level           = cc_printLevel ccOption
@@ -1230,6 +1261,12 @@ simulGoto ccOption symbols state stk =
 
               return $ concat listOfList
 
+simulShift :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+ CompCandidates token ast
+ -> [Candidate]
+ -> Int
+ -> [StkElem token ast]
+ -> IO [(State, Stack token ast, [Candidate])]
 simulShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
       level           = cc_printLevel ccOption
@@ -1340,6 +1377,8 @@ repGotoOrShift ccOption symbols state stk =
 --       Reduce 액션이 있어도 진행될 수 있음!
 
 --
+isReducible :: TokenInterface token =>
+ [(a, [String])] -> Int -> [StkElem token ast] -> Bool
 isReducible productionRules prnum stk =
   let 
       prodrule   = productionRules !! prnum
