@@ -739,6 +739,13 @@ leafs (CandidateTree leaf [] : forest)       = leaf : leafs forest
 leafs (CandidateTree leaf subtrees : forest) =
   leafs subtrees ++ leafs forest -- Here, the leaf is not included as a candidate!
 
+toChildren []                          = []
+toChildren (StkState i:stk)            = toChildren stk
+toChildren (StkTerminal term:stk)      =
+  (CandidateTree (TerminalSymbol (terminalToSymbol term)) []) : toChildren stk
+toChildren (StkNonterminal ast nt:stk) =
+  (CandidateTree (NonterminalSymbol nt) []) : toChildren stk
+
 -- | Automation information
 data Automaton token ast =
   Automaton {
@@ -979,11 +986,12 @@ extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
      CompCandidates token ast -> [CandidateTree] -> State -> Stack token ast -> IO ([[CandidateTree]], Bool)
 extendedCompCandidates ccOption symbols state stk = do
+  -- check yapb.config
   maybeConfig <- readConfig
   case maybeConfig of
     Nothing ->
       do list <- extendedCompCandidates' ccOption symbols state stk
-         return (list, True)
+         return (map (\(a,b,c)->c) list, True)
          
     Just config ->
       let r_level  = config_R_LEVEL config
@@ -1001,9 +1009,10 @@ extendedCompCandidates ccOption symbols state stk = do
                       
       in
       do list <- extendedCompCandidates' ccOption' symbols state stk
-         return (list, display)
+         return (map (\(a,b,c)->c) list, display)
 
   where
+    -- main function
     extendedCompCandidates' ccOption symbols state stk =
       let
          debugFlag = cc_debugFlag ccOption
@@ -1011,24 +1020,28 @@ extendedCompCandidates ccOption symbols state stk = do
          r_level   = cc_r_level ccOption
          gs_level  = cc_gs_level ccOption
       in
-         debug debugFlag ("simple(True)/nested(False): " ++ show isSimple) $ 
+         debug debugFlag ("simple/nested(True/False): " ++ show isSimple) $ 
          debug debugFlag ("(Max) r level: " ++ show r_level) $ 
          debug debugFlag ("(Max) gs level: " ++ show gs_level) $ 
          debug debugFlag "" $ 
 
-         do list <- if isSimple
-                      then repReduce ccOption symbols state stk 
-                      else do extendedNestedCandidates ccOption [(state, stk, symbols)]
+         -- do list <- if isSimple
+         --              then do repReduce ccOption symbols state stk
+         --              else do extendedNestedCandidates ccOption [(state, stk, symbols)]
 
-            return [ c | (state, stk, c) <- list, null c == False ]
+         --    return [ c | (state, stk, c) <- list, null c == False ]
+            
+         do if isSimple
+              then do repReduce ccOption symbols state stk
+              else do extendedNestedCandidates ccOption [(state, stk, symbols)]
 
 
 -- Extended simple candidates
-extendedSimpleCandidates
-    :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       CompCandidates token ast -> State -> Stack token ast -> IO [(State, Stack token ast, [CandidateTree])]
+-- extendedSimpleCandidates
+--     :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+--        CompCandidates token ast -> State -> Stack token ast -> IO [(State, Stack token ast, [CandidateTree])]
        
-extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk 
+-- extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk 
 
 
 -- Extended nested candidates
@@ -1038,46 +1051,45 @@ extendedNestedCandidates
        -> IO [(State, Stack token ast, [CandidateTree])]
        
 extendedNestedCandidates ccOption initStateStkCandsList =
-  let f (state, stk, symbols) =
-          debug debugFlag "Given " $ 
-          debug debugFlag (" - state " ++ show state) $ 
-          debug debugFlag (" - stack " ++ prStack stk) $ 
-          debug debugFlag (" - cand  " ++ show symbols) $ 
+  let debugFlag = cc_debugFlag ccOption
+      r_level   = cc_r_level ccOption
+
+      level     = cc_printLevel ccOption
+
+      len       = length initStateStkCandsList
+
+      f ((state, stk, symbols),i) =
+          debug debugFlag (prlevel level ++ "[extendedNestedCandidates] : " ++ show i ++ "/" ++ show len) $ 
+          debug debugFlag (prlevel level ++ " - state " ++ show state) $ 
+          debug debugFlag (prlevel level ++ " - stack " ++ prStack stk) $ 
+          debug debugFlag (prlevel level ++ " - symbs " ++ show symbols) $ 
           debug debugFlag "" $ 
 
-          do repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
-
-      debugFlag = cc_debugFlag ccOption
-      r_level   = cc_r_level ccOption
+          do list <- repReduce ccOption{cc_simpleOrNested=True,cc_printLevel=level+1} [] state stk
+             return [ (state,stk,symbols++cands) | (state,stk,cands) <- list]
   in
   if r_level > 0
   then
-    debug debugFlag "[extendedNestedCandidates] :" $ 
-      multiDbg (map (\(state, stk, cand) ->
-                     debug debugFlag (" - state " ++ show state) $
-                     debug debugFlag (" - stack " ++ prStack stk) $
-                     debug debugFlag (" - cand  " ++ show cand) $
-                     debug debugFlag ("")
-                ) initStateStkCandsList) $
+    do stateStkCandsListList <- mapM f (zip initStateStkCandsList [1..])
 
-    do stateStkCandsListList <- mapM f initStateStkCandsList
+       -- if null stateStkCandsListList
+       --   then return initStateStkCandsList
+       --   else do nextStateStkCandsList <-
+       --             extendedNestedCandidates ccOption{cc_r_level=r_level-1}
+       --                [ (toState, toStk, {- fromCand ++ -} toCand)
 
-       if null stateStkCandsListList
-         then return initStateStkCandsList
-         else do nextStateStkCandsList <-
-                   extendedNestedCandidates ccOption{cc_r_level=r_level-1}
-                      [ (toState, toStk, fromCand ++ toCand)
+       --                | ((fromState, fromStk, fromCand), toList)
+       --                    <- zip initStateStkCandsList stateStkCandsListList
 
-                      | ((fromState, fromStk, fromCand), toList)
-                          <- zip initStateStkCandsList stateStkCandsListList
+       --                , (toState, toStk, toCand) <- toList
+       --                ]
 
-                      , (toState, toStk, toCand) <- toList
-                      ]
-
-                 return $ initStateStkCandsList ++ nextStateStkCandsList
+       --           return $ {- initStateStkCandsList ++ -} nextStateStkCandsList
+                 
+       extendedNestedCandidates ccOption{cc_r_level=r_level-1} (concat stateStkCandsListList)
 
   else
-    return []
+    return initStateStkCandsList  -- cf. []
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -1194,7 +1206,18 @@ simulReduce ccOption symbols prnum len i state stk =
        then
          debug flag (prlevel level ++ "rhsLength > length symbols: final") $
          debug flag "" $
-         do return [(state, stk, symbols)]
+         
+         do let stk1     = drop (rhsLength*2) stk
+            -- let children = toChildren $ reverse $ take (rhsLength*2) stk
+            -- [CandidateTree (NonterminalSymbol lhs) children]
+            let topState = currentState stk1
+            let toState  = case lookupGotoTable (gotoTbl automaton) topState lhs of
+                  Just state -> state
+                  Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                     ++ lhs ++ " state: " ++ show topState
+            let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+            let stk3 = push (StkState toState) stk2
+            return [(toState, stk3, symbols)]  -- Note: toState and stk3 are after the reduction, but symbols are not!! 
             
        else
          repGotoOrShift
