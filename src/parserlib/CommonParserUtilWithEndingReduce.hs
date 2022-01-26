@@ -224,7 +224,7 @@ matchLexSpec debugFlag eot lexerspec =
           return (fromToken eot, Just eot, fromToken eot)
 
      mlsSub debugFlag eot [] (state_parm, line, col, text) = do
-       throw (CommonParserUtil.LexError line col (takeRet 0 text))
+       throw (CommonParserUtilWithEndingReduce.LexError line col (takeRet 0 text))
 
      mlsSub debugFlag eot ((aSpec,tokenBuilder):lexerspec) (state_parm, line, col, text) = do
        let (pre, matched, post) = text =~ aSpec :: (String,String,String)
@@ -232,7 +232,7 @@ matchLexSpec debugFlag eot lexerspec =
          "" -> let (line_, col_) = moveLineCol line col matched in
                 if line==line_ && col==col_
                 then
-                  throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
+                  throw (CommonParserUtilWithEndingReduce.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
 
                 else
                   do maybeTok <- tokenBuilder matched

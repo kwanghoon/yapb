@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4366e25bdd6c3c7e1e24b18943d965cddfea4f807482070627d2ccf28a978465
+-- hash: 95be690ad46359cfd37a3737422ca4da37318912d7cc43b5ccb947275512d2d1
 
 name:           yapb
 version:        0.1.4
@@ -47,6 +47,7 @@ library
       SynCompInterface
       Config
   other-modules:
+      CommonParserUtilWithEndingReduce
       Paths_yapb
   hs-source-dirs:
       src/gentable/
