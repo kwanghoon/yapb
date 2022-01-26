@@ -1258,6 +1258,7 @@ simulReduce ccOption symbols prnum len i state stk =
                     --         else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
                     
                else if isFinalReduce searchState then  -- Todo: isFinalReduce???
+                 -- Todo(important): What would happen if it just returns []???
                  do repReduce ccOption{cc_printLevel=level+1} reducedSymbols toState stk3 -- Just copied the code above!
                     
                  -- do return (if null symbols
