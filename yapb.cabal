@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 95be690ad46359cfd37a3737422ca4da37318912d7cc43b5ccb947275512d2d1
+-- hash: b8401062f0fb66234c845b5d8bbfccaea059505c35a2146b89bd013ff5d23fb3
 
 name:           yapb
 version:        0.1.4
@@ -46,12 +46,17 @@ library
       EmacsServer
       SynCompInterface
       Config
+      SynCompAlgoBU
+      SynCompAlgoTD
+      SynCompAlgoPEPM
+      SynCompAlgoUtil
+      SynCompAlgorithm
   other-modules:
-      CommonParserUtilWithEndingReduce
       Paths_yapb
   hs-source-dirs:
       src/gentable/
       src/parserlib/
+      src/parserlib/algo
       src/syncomplib
       src/util/
       src/config/

@@ -14,6 +14,7 @@ import Expr
 import SynCompInterface
 import Control.Exception
 import Data.Typeable
+import SynCompAlgorithm
 
 -- Todo: The following part should be moved to the library.
 --       Arguments: lexerSpec, parserSpec
@@ -24,26 +25,29 @@ maxLevel = 10000
 
 -- | computeCand
 computeCand :: Bool -> String -> String -> Bool -> IO [EmacsDataItem]
-computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode = (do
-  {- 1. Parsing -}
-  ((do ast <- parsing debug
-                parserSpec ((),1,1,programTextUptoCursor)
-                  (aLexer lexerSpec) (fromToken (endOfToken lexerSpec))
-       successfullyParsed)
+computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode =
 
-    `catch` \parseError ->
-      case parseError :: ParseError Token AST () of
-        _ ->
-          {- 2. Computing candidates with it -}
-          do let (_,line,column,programTextAfterCursor) = lpStateFrom parseError
-               
-             handleParseError
-               (defaultHandleParseError {
-                   debugFlag=debug,
-                   searchMaxLevel=maxLevel,
-                   simpleOrNested=isSimpleMode,
-                   postTerminalList=[],  -- terminalListAfterCursor is set to []!
-                   nonterminalToStringMaybe=Nothing})
-               parseError))
+  (do 
+      {- 1. Parsing -}
+      ((do ast <- parsing debug
+                    parserSpec ((),1,1,programTextUptoCursor)
+                      (aLexer lexerSpec) (fromToken (endOfToken lexerSpec))
+           successfullyParsed)
 
-  `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError
+        `catch` \parseError ->
+          case parseError :: ParseError Token AST () of
+            _ ->
+              {- 2. Computing candidates with it -}
+              do let (_,line,column,programTextAfterCursor) = lpStateFrom parseError
+                 compCandidates <- chooseCompCandidatesFn
+  
+                 handleParseError compCandidates
+                   (defaultHandleParseError {
+                       debugFlag=debug,
+                       searchMaxLevel=maxLevel,
+                       simpleOrNested=isSimpleMode,
+                       postTerminalList=[],  -- terminalListAfterCursor is set to []!
+                       nonterminalToStringMaybe=Nothing})
+                   parseError))
+
+      `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError

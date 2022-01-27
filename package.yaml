@@ -32,6 +32,7 @@ library:
   source-dirs:
    - src/gentable/
    - src/parserlib/
+   - src/parserlib/algo
    - src/syncomplib
    - src/util/
    - src/config/
@@ -53,7 +54,12 @@ library:
    - EmacsServer
    - SynCompInterface
    - Config
-  
+   - SynCompAlgoBU
+   - SynCompAlgoTD
+   - SynCompAlgoPEPM
+   - SynCompAlgoUtil
+   - SynCompAlgorithm
+
   dependencies:
   - regex-tdfa    >= 1.3.1 && < 1.4
   - hashable      >= 1.3.0 && < 1.4
