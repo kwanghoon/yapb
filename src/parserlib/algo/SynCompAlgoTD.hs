@@ -223,6 +223,7 @@ repReduce ccOption symbols state stk =
 
                                return $ concat listOfList
 
+{- Called when Init or Final search states -}
 simulReduce :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
  CompCandidates token ast
  -> [CandidateTree]
@@ -248,14 +249,15 @@ simulReduce ccOption symbols prnum len i state stk =
   in
      -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
-     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at "  ++
-                 show state  ++ " " ++
+     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] " ++
+                 "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                 "at " ++ show state  ++ " " ++
                  showProductionRule (productionRules !! prnum)) $ 
      -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
      -- debug flag (prlevel level ++ " - State " ++ show state) $ 
      debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
      debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
-     debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+     -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
      debug flag "" $ 
 
      if rhsLength > length symbols && length symbols > 0   -- This is the time to stop!
@@ -278,12 +280,12 @@ simulReduce ccOption symbols prnum len i state stk =
             return [(toState, stk3, symbols)]  -- Note: toState and stk3 are after the reduction, but symbols are not!! 
             
        else
-         repGotoOrShift
-           (ccOption{cc_searchState =
-                     SS_GotoOrShift
-                     (r_level (cc_searchState ccOption))
-                     (gs_level (cc_searchState ccOption)) })
-             symbols state stk
+        repGotoOrShift
+          (ccOption{cc_searchState =
+                    SS_GotoOrShift
+                    (r_level (cc_searchState ccOption))
+                    (gs_level (cc_searchState ccOption)) })
+            symbols state stk
 
      -- rhsLength <= length symbols || length symbols == 0
      else do let stk1 = drop (rhsLength*2) stk
@@ -361,11 +363,12 @@ simulGoto ccOption symbols state stk =
                           let stk1 = push (StkNonterminal Nothing nonterminal) stk in
                           let stk2 = push (StkState snext) stk1 in
 
-                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                                         ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
+                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                         "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                         "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
                           debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
                           debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])) $ 
-                          debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                          -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                           debug flag "" $ 
 
                           repGotoOrShift 
@@ -405,11 +408,12 @@ simulShift ccOption symbols state stk =
                               let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in
                               let stk2 = push (StkState snext) stk1 in
 
-                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                            ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
+                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                            "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                            "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
                               debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
                               debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[CandidateTree (TerminalSymbol terminal) []])) $ 
-                              debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                              -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                               debug flag "" $ 
 
                               repGotoOrShift

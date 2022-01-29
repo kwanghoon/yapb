@@ -58,7 +58,11 @@ data SearchState =
     SS_InitReduces R_Level GS_Level -- Reduce^*
   | SS_GotoOrShift R_Level GS_Level -- (Goto | Shift)
   | SS_FinalReduce R_Level GS_Level -- Reduce
-  deriving Show
+
+instance Show SearchState where
+  showsPrec p (SS_InitReduces r gs) = (++) $ "I:" ++ show r ++ ":" ++ show gs
+  showsPrec p (SS_GotoOrShift r gs) = (++) $ "M:" ++ show r ++ ":" ++ show gs
+  showsPrec p (SS_FinalReduce r gs) = (++) $ "F:" ++ show r ++ ":" ++ show gs
 
 init_r_level :: R_Level
 init_r_level = 1

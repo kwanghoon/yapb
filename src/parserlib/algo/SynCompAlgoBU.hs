@@ -244,14 +244,15 @@ simulReduce ccOption symbols prnum len i state stk =
   in
      -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
-     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at " ++
-                 show state  ++ " " ++
-                 showProductionRule (productionRules !! prnum)) $ 
+     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] " ++
+                 "[" ++ show (cc_searchState ccOption) ++ "] "  ++
+                 "at " ++ show state  ++ " " ++
+                 showProductionRule (productionRules !! prnum))   $ 
      -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
      -- debug flag (prlevel level ++ " - State " ++ show state) $ 
      debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
      debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
-     debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+     -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
      debug flag "" $ 
 
      if (rhsLength > length symbols) == False && False -- Q: 필요? False for the moment!
@@ -317,11 +318,12 @@ simulGoto ccOption symbols state stk =
                           let stk1 = push (StkNonterminal Nothing nonterminal) stk in
                           let stk2 = push (StkState snext) stk1 in
 
-                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] at "
-                                         ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
+                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                        "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                        "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
                           debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
                           debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])) $ 
-                          debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                          -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                           debug flag "" $ 
 
                           repGotoOrShift 
@@ -361,11 +363,12 @@ simulShift ccOption symbols state stk =
                               let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in
                               let stk2 = push (StkState snext) stk1 in
 
-                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "]: "
-                                            ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
+                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                            "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                            "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
                               debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
                               debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])) $ 
-                              debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                              -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                               debug flag "" $ 
 
                               repGotoOrShift
