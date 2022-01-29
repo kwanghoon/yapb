@@ -91,3 +91,7 @@ multiDbg (f:fs) = f . multiDbg fs
 
 prlevel :: Int -> String
 prlevel n = take n (let spaces = ' ' : spaces in spaces)
+
+showProductionRule :: (String,[String]) -> String
+showProductionRule (lhs,rhss) =
+  lhs ++ " -> " ++ concat (map (\rhs -> rhs ++ " ") rhss)

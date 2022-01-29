@@ -135,10 +135,12 @@ compGammasDfs ccOption level symbols state stk history =
                  -- checkCycle False level state stk ("REDUCE " ++ show prnum) history
                  checkCycle flag True level state stk (show prnum) history
                    (\history1 -> 
-                      debug flag (prlevel level ++ "REDUCE"
-                                      ++ " [" ++ show i ++ "/" ++ show len ++ "]") $ 
-                      debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
-                      debug flag (prlevel level ++ " - State " ++ show state) $ 
+                      debug flag (prlevel level ++ "REDUCE" ++ 
+                                  "[" ++ show i ++ "/" ++ show len ++ "] at " ++
+                                  show state  ++ " " ++
+                                  showProductionRule (productionRules !! prnum)) $ 
+                      -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
+                      -- debug flag (prlevel level ++ " - State " ++ show state) $ 
                       debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
                       debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
                       debug flag "" $ 

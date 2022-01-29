@@ -248,9 +248,11 @@ simulReduce ccOption symbols prnum len i state stk =
   in
      -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
-     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at ") $ 
-     debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
-     debug flag (prlevel level ++ " - State " ++ show state) $ 
+     debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] at "  ++
+                 show state  ++ " " ++
+                 showProductionRule (productionRules !! prnum)) $ 
+     -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
+     -- debug flag (prlevel level ++ " - State " ++ show state) $ 
      debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
      debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
      debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
