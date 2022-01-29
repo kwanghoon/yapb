@@ -293,19 +293,20 @@ simulReduce ccOption symbols prnum len i state stk =
              let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
              let stk3 = push (StkState toState) stk2
 
-             let reducedSymbols =
+             let (reducedSymbols, gs) =
                    if rhsLength <= length symbols
                    then let revSymbols = reverse symbols
                             children   = reverse (take rhsLength revSymbols)
                             therest    = drop rhsLength $ revSymbols
-                        in  reverse $ (CandidateTree (NonterminalSymbol lhs) children :) $ therest
-                   else symbols
+                        in  ( reverse $ (CandidateTree (NonterminalSymbol lhs) children :) $ therest
+                            , cc_gs_level ccOption + rhsLength - 1)
+                   else (symbols, cc_gs_level ccOption)
 
              if isSimple then  -- simple mode
 
                if isInitReduces searchState then -- reduces until symbols are found
                  do -- listOfList <- repReduce ccOption{cc_printLevel=level+1} reducedSymbols toState stk3
-                    repReduce ccOption{cc_printLevel=level+1} reducedSymbols toState stk3
+                    repReduce ccOption{cc_printLevel=level+1,cc_gs_level=gs} reducedSymbols toState stk3
 
                     -- let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
 
@@ -455,6 +456,7 @@ repGotoOrShift ccOption symbols state stk =
                                              SS_GotoOrShift
                                                (r_level (cc_searchState ccOption))
                                                (gs_level (cc_searchState ccOption) - 1)}
+                                               -- Decrease the gs level by one!!
                          in
 
                          -- both goto and shift only once 
