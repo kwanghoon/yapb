@@ -162,7 +162,7 @@ repReduce ccOption symbols state stk =
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
-  in -- do debug flag $ prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)
+  in debug flag (prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)) $
 
      if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
      then 
@@ -174,13 +174,16 @@ repReduce ccOption symbols state stk =
                              , state==s
                              , isReducible productionRules prnum stk] of
                []        -> if isFinalReduce (cc_searchState ccOption)
-                            then return []
+                            then debug flag (prlevel level ++ "no Reduce (final search state): final " ++ show state) $
+                                return []
 
-                            else repGotoOrShift
-                                   (ccOption {cc_searchState =
-                                              SS_GotoOrShift
-                                                (r_level (cc_searchState ccOption))
-                                                (gs_level (cc_searchState ccOption)) })
+                            else
+                                repGotoOrShift False -- do not do repReduce in the beginning!
+                                   (setGotoOrShift (ccOption{cc_printLevel=level+1}))
+                                   -- (ccOption {cc_searchState =
+                                   --            SS_GotoOrShift
+                                   --              (r_level (cc_searchState ccOption))
+                                   --              (gs_level (cc_searchState ccOption)) })
                                      symbols state stk
 
                prnumList -> do let len = length prnumList
@@ -191,11 +194,12 @@ repReduce ccOption symbols state stk =
                                             
                                             -- SS_InitReduces
                                             if isInitReduces searchState then
-                                              do list2 <- repGotoOrShift
-                                                           (ccOption {cc_searchState =
-                                                                        SS_GotoOrShift
-                                                                          (r_level (cc_searchState ccOption))
-                                                                          (gs_level (cc_searchState ccOption)) })
+                                              do list2 <- repGotoOrShift True -- do repReduce since it is Init search state
+                                                           (ccOption{cc_printLevel=level+1})
+                                                           -- (ccOption {cc_searchState =
+                                                           --              SS_GotoOrShift
+                                                           --                (r_level (cc_searchState ccOption))
+                                                           --                (gs_level (cc_searchState ccOption)) })
                                                              symbols state stk
 
                                                  list1 <- simulReduce ccOption symbols prnum len i state stk
@@ -247,7 +251,7 @@ simulReduce ccOption symbols prnum len i state stk =
       
       rhsLength = length rhs
   in
-     -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
+     debug flag (prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)) $
 
      debug flag (prlevel level ++ "REDUCE [" ++ show i ++ "/" ++ show len ++ "] " ++
                  "[" ++ show (cc_searchState ccOption) ++ "] " ++
@@ -280,11 +284,12 @@ simulReduce ccOption symbols prnum len i state stk =
             return [(toState, stk3, symbols)]  -- Note: toState and stk3 are after the reduction, but symbols are not!! 
             
        else
-        repGotoOrShift
-          (ccOption{cc_searchState =
-                    SS_GotoOrShift
-                    (r_level (cc_searchState ccOption))
-                    (gs_level (cc_searchState ccOption)) })
+        repGotoOrShift False -- Todo: do not do repReduce because Reduce has just been done???
+          (ccOption{cc_printLevel=level+1})
+          -- (ccOption{cc_searchState =
+          --           SS_GotoOrShift
+          --           (r_level (cc_searchState ccOption))
+          --           (gs_level (cc_searchState ccOption)) })
             symbols state stk
 
      -- rhsLength <= length symbols || length symbols == 0
@@ -348,36 +353,36 @@ simulGoto ccOption symbols state stk =
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
-  in do -- debug flag $ prlevel level ++ "[simulGoto] " ++ show (cc_searchState ccOption)
+  in do debug flag (prlevel level ++ "[simulGoto] " ++ show (cc_searchState ccOption)) $
 
-        case nub [ (nonterminal,toState)
-                 | ((fromState,nonterminal),toState) <- gotoTable
-                 , state==fromState ] of
-          [] -> do return []
+          case nub [ (nonterminal,toState)
+                   | ((fromState,nonterminal),toState) <- gotoTable
+                   , state==fromState ] of
+            [] -> do return []
 
-          nontermStateList ->
-            do
-              let len = length nontermStateList
-              listOfList <-
-                mapM (\ ((nonterminal,snext),i) -> 
-                          let stk1 = push (StkNonterminal Nothing nonterminal) stk in
-                          let stk2 = push (StkState snext) stk1 in
+            nontermStateList ->
+              do
+                let len = length nontermStateList
+                listOfList <-
+                  mapM (\ ((nonterminal,snext),i) -> 
+                            let stk1 = push (StkNonterminal Nothing nonterminal) stk in
+                            let stk2 = push (StkState snext) stk1 in
 
-                          debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] " ++
-                                         "[" ++ show (cc_searchState ccOption) ++ "] " ++
-                                         "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
-                          debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                          debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])) $ 
-                          -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
-                          debug flag "" $ 
+                            debug flag (prlevel level ++ "GOTO [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                           "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                           "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
+                            debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                            debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])) $ 
+                            -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                            debug flag "" $ 
 
-                          repGotoOrShift 
-                            ccOption{cc_printLevel=level+1}
-                              (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])
-                                snext stk2)
-                  (zip nontermStateList [1..])
+                            repGotoOrShift True
+                              (setGotoOrShift (ccOption{cc_printLevel=level+1}))
+                                (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])
+                                  snext stk2)
+                    (zip nontermStateList [1..])
 
-              return $ concat listOfList
+                return $ concat listOfList
 
 simulShift :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
  CompCandidates token ast
@@ -397,38 +402,40 @@ simulShift ccOption symbols state stk =
   in
   let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s]
       len = length cand2
-  in do -- debug flag $ prlevel level ++ "[simulShift] " ++ show (cc_searchState ccOption)
+  in do debug flag (prlevel level ++ "[simulShift] " ++ show (cc_searchState ccOption)) $
 
-        case cand2 of
-         [] -> do return []
+          case cand2 of
+           [] -> do return []
 
-         _  -> do
-                  listOfList <-
-                    mapM (\ ((terminal,snext),i)-> 
-                              let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in
-                              let stk2 = push (StkState snext) stk1 in
+           _  -> do
+                    listOfList <-
+                      mapM (\ ((terminal,snext),i)-> 
+                                let stk1 = push (StkTerminal (Terminal terminal 0 0 Nothing)) stk in
+                                let stk2 = push (StkState snext) stk1 in
 
-                              debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "] " ++
-                                            "[" ++ show (cc_searchState ccOption) ++ "] " ++
-                                            "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
-                              debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                              debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[CandidateTree (TerminalSymbol terminal) []])) $ 
-                              -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
-                              debug flag "" $ 
+                                debug flag (prlevel level ++ "SHIFT [" ++ show i ++ "/" ++ show len ++ "] " ++
+                                              "[" ++ show (cc_searchState ccOption) ++ "] " ++
+                                              "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
+                                debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
+                                debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[CandidateTree (TerminalSymbol terminal) []])) $ 
+                                -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
+                                debug flag "" $ 
 
-                              repGotoOrShift
-                                ccOption{cc_printLevel=level+1}
-                                  (symbols++[CandidateTree (TerminalSymbol terminal) []])
-                                    snext stk2)
-                      (zip cand2 [1..])
+                                repGotoOrShift True
+                                  (setGotoOrShift (ccOption{cc_printLevel=level+1}))
+                                    (symbols++[CandidateTree (TerminalSymbol terminal) []])
+                                      snext stk2)
+                        (zip cand2 [1..])
 
-                  return $ concat listOfList
+                    return $ concat listOfList
 
+{- Search states are InitReduce or GotoOrShift! -}
 repGotoOrShift
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+     Bool ->  -- True : do repReuce, False : skip repReduce!
      CompCandidates token ast -> [CandidateTree] -> State -> Stack token ast -> IO [(State, Stack token ast, [CandidateTree])]
 
-repGotoOrShift ccOption symbols state stk =
+repGotoOrShift doRepReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
       level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
@@ -438,7 +445,7 @@ repGotoOrShift ccOption symbols state stk =
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
   in
-     -- debug flag (prlevel level ++ "[repGotoOrShift] " ++ show (cc_searchState ccOption)) $
+     debug flag (prlevel level ++ "[repGotoOrShift] " ++ show doRepReduce ++ ":" ++ show (cc_searchState ccOption)) $
 
      do if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
         then 
@@ -446,14 +453,27 @@ repGotoOrShift ccOption symbols state stk =
              return []
 
         else do
-                listOfList1 <- repReduce
-                                 (ccOption{cc_searchState=
-                                             SS_FinalReduce
-                                               (r_level (cc_searchState ccOption))
-                                               (gs_level (cc_searchState ccOption))})
-                                   symbols state stk
+                listOfList1 <-
+                  if doRepReduce
+                  then repReduce
+                           (ccOption{cc_printLevel = level+1,
+                                     cc_searchState=
+                                       SS_FinalReduce
+                                         (r_level (cc_searchState ccOption))
+                                         (gs_level (cc_searchState ccOption))})
+                             symbols state stk
+                  else return []
 
-                if null listOfList1 -- \|\| isInitReduces (cc_searchState ccOption)
+                -- Idea: Once this is called, do Shift or Goto at least once whenever possible
+                --       by having the disjunct, isInitReduces (cc_searchState ccOption)!!
+
+                --    listOfList1 == [] && init reduce    ==> do goto or shift
+                -- || listOfList1 == [] && goto or shift  ==> do goto or shift
+                -- || listOfList1 /= [] && init reduce    ==> do goto of shift (give a chance!)
+                -- || listOfList1 /= [] && goto or shift  ==> No!!
+
+                if    null listOfList1 == False && isInitReduces (cc_searchState ccOption)
+                   || null listOfList1 == True
                   then
                        -- let listOfList1 = []
 
@@ -505,7 +525,10 @@ repGotoOrShift ccOption symbols state stk =
                          debug flag (prlevel level) $
                          do return []
 
-                  else do return listOfList1
+                  else
+                    debug flag (prlevel level ++ "[repGotoOrShift] (4) final") $
+                     debug flag "" $
+                      do return listOfList1
 
 -- Todo: repReduce를 하지 않고
 --       Reduce 액션이 있는지 보고

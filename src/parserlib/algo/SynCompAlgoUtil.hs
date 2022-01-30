@@ -78,6 +78,12 @@ isInitReduces _                    = False
 isFinalReduce (SS_FinalReduce _ _) = True
 isFinalReduce _                    = False
 
+setGotoOrShift ccOption =
+  case cc_searchState ccOption of
+    SS_InitReduces r gs -> ccOption{cc_searchState=SS_GotoOrShift r gs}
+    SS_GotoOrShift r gs -> ccOption{cc_searchState=SS_GotoOrShift r gs}
+    SS_FinalReduce r gs -> ccOption{cc_searchState=SS_GotoOrShift r gs} -- Todo: ??? error $ "[setGotoOrShift] expected SS_InitReduces or SS_GotoOrShift"
+    
 r_level (SS_InitReduces r gs) = r
 r_level (SS_GotoOrShift r gs) = r
 r_level (SS_FinalReduce r gs) = r
