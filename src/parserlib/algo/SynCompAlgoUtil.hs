@@ -9,7 +9,22 @@ data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate Stri
   | NonterminalSymbol String
   deriving Eq
 
-data CandidateTree = CandidateTree Candidate [CandidateTree] deriving (Eq,Show)
+-- | Candidate tree
+
+-- data CandidateTree = CandidateTree Candidate [CandidateTree] deriving (Eq,Show)
+
+{-
+--   ( CandidateTree cand [] )^*          ===> Leaf cand
+--   ( CandidateTree cand [t1,...,tn] )^* ===> Node cand [t1^*, ..., tn^*]
+--
+--   A ->                ===> Node (Nonterminal "A") []
+--                            is not equal to Leaf (Nonterminal "A").
+-}
+
+data CandidateTree =
+    Leaf Candidate 
+  | Node Candidate [CandidateTree]
+  deriving (Eq,Show)
 
 type CandidateForest = [CandidateTree]
 
@@ -17,14 +32,25 @@ instance Show Candidate where
   showsPrec p (TerminalSymbol s) = (++) $ "Terminal " ++ s
   showsPrec p (NonterminalSymbol s) = (++) $ "Nonterminal " ++ s
 
-leaf :: Candidate -> CandidateTree
-leaf cand = CandidateTree cand []
+-- leaf :: Candidate -> CandidateTree
+-- leaf cand = CandidateTree cand []
+-- leaf cand = Leaf cand
 
 leafs :: CandidateForest -> [Candidate]
 leafs []                                     = []
-leafs (CandidateTree leaf [] : forest)       = leaf : leafs forest
-leafs (CandidateTree leaf subtrees : forest) =
-  leafs subtrees ++ leafs forest -- Here, the leaf is not included as a candidate!
+-- leafs (CandidateTree leaf [] : forest)       = leaf : leafs forest
+-- leafs (CandidateTree leaf subtrees : forest) =
+leafs (Leaf leaf : forest) = leaf : leafs forest
+leafs (Node leaf subtrees : forest) =
+  leafs subtrees ++ leafs forest -- The leaf is not included as a candidate!
+                                 -- i.e., leafs (Node leaf []) = []
+
+--
+candidateLeaf :: Candidate -> CandidateTree
+candidateLeaf cand = Leaf cand
+
+candidateNode :: Candidate -> CandidateForest -> CandidateTree
+candidateNode nonterminal_lhs children = Node nonterminal_lhs children
 
 -- | Automation information
 data Automaton token ast =

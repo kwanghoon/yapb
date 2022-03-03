@@ -29,7 +29,7 @@ compCandidates ccOption level symbols state stk =
   debug flag (" - stack: " ++ prStack stk) $ 
   debug flag "" $ 
   -- compGammasDfs ccOption level symbols state stk []
-  do let symbolTrees = map leaf symbols
+  do let symbolTrees = map candidateLeaf symbols
      (candForestList,bool) <- extendedCompCandidates ccOption symbolTrees state stk
      return (map leafs candForestList, bool)
 
@@ -307,7 +307,7 @@ simulReduce ccOption symbols prnum len i state stk =
                    then let revSymbols = reverse symbols
                             children   = reverse (take rhsLength revSymbols)
                             therest    = drop rhsLength $ revSymbols
-                        in  ( reverse $ (CandidateTree (NonterminalSymbol lhs) children :) $ therest
+                        in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
                             , cc_gs_level ccOption + rhsLength - 1)
                    else (symbols, cc_gs_level ccOption)
 
@@ -372,13 +372,13 @@ simulGoto ccOption symbols state stk =
                                            "[" ++ show (cc_searchState ccOption) ++ "] " ++
                                            "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
                             debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                            debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])) $ 
+                            debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[candidateNode (NonterminalSymbol nonterminal) []])) $ 
                             -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                             debug flag "" $ 
 
                             repGotoOrShift True
                               (setGotoOrShift (ccOption{cc_printLevel=level+1}))
-                                (symbols++[CandidateTree (NonterminalSymbol nonterminal) []])
+                                (symbols++[candidateNode (NonterminalSymbol nonterminal) []])
                                   snext stk2)
                     (zip nontermStateList [1..])
 
@@ -417,13 +417,13 @@ simulShift ccOption symbols state stk =
                                               "[" ++ show (cc_searchState ccOption) ++ "] " ++
                                               "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
                                 debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                                debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[CandidateTree (TerminalSymbol terminal) []])) $ 
+                                debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[candidateNode (TerminalSymbol terminal) []])) $ 
                                 -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                                 debug flag "" $ 
 
                                 repGotoOrShift True
                                   (setGotoOrShift (ccOption{cc_printLevel=level+1}))
-                                    (symbols++[CandidateTree (TerminalSymbol terminal) []])
+                                    (symbols++[candidateNode (TerminalSymbol terminal) []])
                                       snext stk2)
                         (zip cand2 [1..])
 

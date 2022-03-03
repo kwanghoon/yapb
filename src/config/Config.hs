@@ -13,7 +13,7 @@ data Configuration =
     config_DEBUG :: Bool,       -- True => Debugging on, False => Debugging off
     config_DISPLAY :: Bool,     -- True => Display in Emacs, False => Do not display in Emacs
     config_PRESENTATION :: Int, -- 0 : default, 1 : ...
-    config_ALGORITHM :: Int     -- 0 : BU,  1 : TD,  2 : PEPM
+    config_ALGORITHM :: Int     -- 0 : BU,  1 : TD,  2 : PEPM [, 3 : BUTree ] 
   }
   deriving (Read, Show)
 

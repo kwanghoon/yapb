@@ -1,4 +1,4 @@
-module SynCompAlgoBU (compCandidates) where
+module SynCompAlgoBUTree (compCandidates) where
 
 import AutomatonType
 import Terminal
@@ -28,8 +28,9 @@ compCandidates ccOption level symbols state stk =
   debug flag (" - stack: " ++ prStack stk) $ 
   debug flag "" $ 
   -- compGammasDfs ccOption level symbols state stk []
-  do extendedCompCandidates ccOption symbols state stk
-
+  do let symbolTrees = map candidateLeaf symbols
+     (candForestList,bool) <- extendedCompCandidates ccOption symbolTrees state stk
+     return (map leafs candForestList, bool)
 
 --------------------------------------------------------------------------------
 -- A new search algorithm
@@ -37,24 +38,25 @@ compCandidates ccOption level symbols state stk =
 --
 type State           = Int
 type LengthOfSymbols = Int
-  
+
+
 --
 extendedCompCandidates
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> State -> Stack token ast -> IO ([[Candidate]], Bool)
+     CompCandidates token ast -> [CandidateTree] -> State -> Stack token ast -> IO ([[CandidateTree]], Bool)
 extendedCompCandidates ccOption symbols state stk = do
   maybeConfig <- readConfig
   case maybeConfig of
     Nothing ->
       do list <- extendedCompCandidates' ccOption symbols state stk
-         return (list, True)
+         return (map (\(a,b,c)->c) list, True)
          
     Just config ->
-      let r_level  = config_R_LEVEL config
-          gs_level = config_GS_LEVEL config
+      let r_level   = config_R_LEVEL config
+          gs_level  = config_GS_LEVEL config
           debugFlag = config_DEBUG config
-          display  = config_DISPLAY config
-          isSimple = config_SIMPLE config
+          display   = config_DISPLAY config
+          isSimple  = config_SIMPLE config
 
           ccOption' = ccOption { cc_debugFlag = debugFlag
                                , cc_r_level = r_level
@@ -65,7 +67,7 @@ extendedCompCandidates ccOption symbols state stk = do
                       
       in
       do list <- extendedCompCandidates' ccOption' symbols state stk
-         return (list, display)
+         return (map (\(a,b,c)->c) list, display)
 
   where
     extendedCompCandidates' ccOption symbols state stk =
@@ -80,29 +82,22 @@ extendedCompCandidates ccOption symbols state stk = do
          debug debugFlag ("(Max) gs level: " ++ show gs_level) $ 
          debug debugFlag "" $ 
 
-         do list <- if isSimple
-                      then repReduce ccOption symbols state stk 
-                      else do extendedNestedCandidates ccOption [(state, stk, symbols)]
-
-            return [ c | (state, stk, c) <- list, null c == False ]
-
-
--- Extended simple candidates
-extendedSimpleCandidates
-    :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       CompCandidates token ast -> State -> Stack token ast -> IO [(State, Stack token ast, [Candidate])]
-       
-extendedSimpleCandidates ccOption state stk = repReduce ccOption [] state stk 
+         do if isSimple
+              then repReduce ccOption symbols state stk 
+              else do extendedNestedCandidates ccOption [(state, stk, symbols)]
 
 
 -- Extended nested candidates
 extendedNestedCandidates
     :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-       CompCandidates token ast -> [(State, Stack token ast, [Candidate])]
-       -> IO [(State, Stack token ast, [Candidate])]
+       CompCandidates token ast -> [(State, Stack token ast, [CandidateTree])]
+       -> IO [(State, Stack token ast, [CandidateTree])]
        
 extendedNestedCandidates ccOption initStateStkCandsList =
-  let f (state, stk, symbols) =
+  let debugFlag = cc_debugFlag ccOption
+      r_level   = cc_r_level ccOption
+      
+      f (state, stk, symbols) =
           debug debugFlag "Given " $ 
           debug debugFlag (" - state " ++ show state) $ 
           debug debugFlag (" - stack " ++ prStack stk) $ 
@@ -111,8 +106,6 @@ extendedNestedCandidates ccOption initStateStkCandsList =
 
           do repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
 
-      debugFlag = cc_debugFlag ccOption
-      r_level   = cc_r_level ccOption
   in
   if r_level > 0
   then
@@ -145,8 +138,8 @@ extendedNestedCandidates ccOption initStateStkCandsList =
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> State -> Stack token ast
-     -> IO [(State, Stack token ast, [Candidate])]
+     CompCandidates token ast -> [CandidateTree] -> State -> Stack token ast
+     -> IO [(State, Stack token ast, [CandidateTree])]
 
 repReduce ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
@@ -221,13 +214,13 @@ repReduce ccOption symbols state stk =
 
 simulReduce :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
  CompCandidates token ast
- -> [Candidate]
+ -> [CandidateTree]
  -> Int  -- Production rule number
  -> Int  -- of all reducible actions
  -> Int  -- ith action chosen
  -> State
  -> Stack token ast
- -> IO [(State, Stack token ast, [Candidate])]
+ -> IO [(State, Stack token ast, [CandidateTree])]
 simulReduce ccOption symbols prnum len i state stk =
   let flag      = cc_debugFlag ccOption
       isSimple  = cc_simpleOrNested ccOption
@@ -241,6 +234,8 @@ simulReduce ccOption symbols prnum len i state stk =
       rhs       = snd prodrule
       
       rhsLength = length rhs
+
+      len_leafs_symbols = length (leafs symbols)
   in
      -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
@@ -255,10 +250,13 @@ simulReduce ccOption symbols prnum len i state stk =
      -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
      debug flag "" $ 
 
-     if (rhsLength > length symbols) == False && False -- Q: 필요? False for the moment!
-     then do return []
-
-     else do let stk1 = drop (rhsLength*2) stk
+     if isFinalReduce searchState 
+     then
+       -- Todo: Sometime (>) is correct sometimes (>=) is correct!
+       -- if rhsLength >= length (leafs symbols) && {- length symbols > 0 && -} length (leafs symbols) > 0
+       if rhsLength >= len_leafs_symbols && len_leafs_symbols > 0
+       then
+          do let stk1 = drop (rhsLength*2) stk
              let topState = currentState stk1
              let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
                    Just state -> state
@@ -267,37 +265,80 @@ simulReduce ccOption symbols prnum len i state stk =
              let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
              let stk3 = push (StkState toState) stk2
 
-             if isSimple then  -- simple mode
+             debug flag (prlevel level ++ " - FOUND: " ++ show symbols) $
+              debug flag "" $
+               return [(toState,stk3,symbols)]  -- Note: toState and stk3 are after the reduction, but symbols are not!!
+               
+       else
+          -- do let stk1 = drop (rhsLength*2) stk
+          --    let topState = currentState stk1
+          --    let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+          --          Just state -> state
+          --          Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+          --                             ++ lhs ++ " state: " ++ show topState
+          --    let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+          --    let stk3 = push (StkState toState) stk2
+             
+          --    let (reducedSymbols, gs) =
+          --         if rhsLength <= length symbols
+          --         then let revSymbols = reverse symbols
+          --                  children   = reverse (take rhsLength revSymbols)
+          --                  therest    = drop rhsLength $ revSymbols
+          --              in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
+          --                  , cc_gs_level ccOption + rhsLength - 1)
+          --         else (symbols, cc_gs_level ccOption)
+                  
+          --    repReduce ccOption {cc_printLevel=level+1} reducedSymbols toState stk3
+             
+          return []
 
-               if isInitReduces searchState then -- reduces until symbols are found
-                 do listOfList <- repReduce ccOption{cc_printLevel=level+1} [] toState stk3
+     else
+       do let stk1 = drop (rhsLength*2) stk
+          let topState = currentState stk1
+          let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+                Just state -> state
+                Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                   ++ lhs ++ " state: " ++ show topState
+          let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+          let stk3 = push (StkState toState) stk2
 
-                    let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
+          let (reducedSymbols, gs) =
+                if rhsLength <= length symbols
+                then let revSymbols = reverse symbols
+                         children   = reverse (take rhsLength revSymbols)
+                         therest    = drop rhsLength $ revSymbols
+                     in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
+                         , cc_gs_level ccOption + rhsLength - 1)
+                else (symbols, cc_gs_level ccOption)
 
-                    return (if null symbols
-                            then listOfList
-                            else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
-                      
-               else if isFinalReduce searchState then
-                      if null symbols
-                      then return []
-                      else debug flag (prlevel level ++ " - FOUND: " ++ show symbols) $
-                            debug flag "" $
-                              return [(toState, stk3, symbols)]
+          if isSimple then  -- simple mode
 
-               else -- SS_GotoOrShift
-                 do error $ "simulReduce: Unexpected search state" ++ show searchState
+            if isInitReduces searchState then -- reduces until symbols are found
+              do listOfList <- repReduce ccOption{cc_printLevel=level+1,cc_gs_level=gs} reducedSymbols toState stk3
 
-             else -- nested mode
-               do error $ "simulReduce: Unexpected nested mode: "
+                 let f syms0 (s, stk, syms) = (s, stk, syms0 ++ syms)
+
+                 return (if null symbols
+                         then listOfList
+                         else {- (toState, stk3, symbols) : -} map (f symbols) listOfList)  -- Q: symbols: 필요?
+            else if isFinalReduce searchState then
+              do return []
+              -- do return (if null symbols
+              --         then []
+              --         else [(toState, stk3, symbols)])
+            else -- SS_GotoOrShift
+              do error $ "simulReduce: Unexpected search state" ++ show searchState
+
+          else -- nested mode
+            do error $ "simulReduce: Unexpected nested mode: "
 
 
 simulGoto :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
  CompCandidates token ast
- -> [Candidate]
+ -> [CandidateTree]
  -> Int
  -> [StkElem token ast]
- -> IO [(State, Stack token ast, [Candidate])]
+ -> IO [(State, Stack token ast, [CandidateTree])]
 simulGoto ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
       level           = cc_printLevel ccOption
@@ -326,13 +367,13 @@ simulGoto ccOption symbols state stk =
                                         "[" ++ show (cc_searchState ccOption) ++ "] " ++
                                         "at " ++ show state ++ " -> " ++ show nonterminal ++ " -> " ++ show snext) $ 
                           debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                          debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[NonterminalSymbol nonterminal])) $ 
+                          debug flag (prlevel level ++ " - " ++ "Symbols:" ++ show (symbols++[candidateLeaf (NonterminalSymbol nonterminal)])) $ 
                           -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                           debug flag "" $ 
 
                           repGotoOrShift 
                             ccOption{cc_printLevel=level+1}
-                              (symbols++[NonterminalSymbol nonterminal])
+                              (symbols++[candidateLeaf (NonterminalSymbol nonterminal)])
                                 snext stk2)
                   (zip nontermStateList [1..])
 
@@ -340,10 +381,10 @@ simulGoto ccOption symbols state stk =
 
 simulShift :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
  CompCandidates token ast
- -> [Candidate]
+ -> [CandidateTree]
  -> Int
  -> [StkElem token ast]
- -> IO [(State, Stack token ast, [Candidate])]
+ -> IO [(State, Stack token ast, [CandidateTree])]
 simulShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption
       level           = cc_printLevel ccOption
@@ -371,13 +412,13 @@ simulShift ccOption symbols state stk =
                                             "[" ++ show (cc_searchState ccOption) ++ "] " ++
                                             "at " ++ show state ++ " -> " ++ terminal ++ " -> " ++ show snext) $ 
                               debug flag (prlevel level ++ " - " ++ "Stack " ++ prStack stk2) $ 
-                              debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[TerminalSymbol terminal])) $ 
+                              debug flag (prlevel level ++ " - " ++ "Symbols: " ++ show (symbols++[candidateLeaf (TerminalSymbol terminal)])) $ 
                               -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
                               debug flag "" $ 
 
                               repGotoOrShift
                                 ccOption{cc_printLevel=level+1}
-                                  (symbols++[TerminalSymbol terminal])
+                                  (symbols++[candidateLeaf (TerminalSymbol terminal)])
                                     snext stk2)
                       (zip cand2 [1..])
 
@@ -385,7 +426,7 @@ simulShift ccOption symbols state stk =
 
 repGotoOrShift
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-     CompCandidates token ast -> [Candidate] -> State -> Stack token ast -> IO [(State, Stack token ast, [Candidate])]
+     CompCandidates token ast -> [CandidateTree] -> State -> Stack token ast -> IO [(State, Stack token ast, [CandidateTree])]
 
 repGotoOrShift ccOption symbols state stk =
   let flag            = cc_debugFlag ccOption

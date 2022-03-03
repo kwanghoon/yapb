@@ -724,9 +724,9 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 toChildren []                          = []
 toChildren (StkState i:stk)            = toChildren stk
 toChildren (StkTerminal term:stk)      =
-  (CandidateTree (TerminalSymbol (terminalToSymbol term)) []) : toChildren stk
+  (Leaf (TerminalSymbol (terminalToSymbol term))) : toChildren stk
 toChildren (StkNonterminal ast nt:stk) =
-  (CandidateTree (NonterminalSymbol nt) []) : toChildren stk
+  (Leaf (NonterminalSymbol nt)) : toChildren stk
 
 
 -- --

@@ -4,6 +4,9 @@ import qualified SynCompAlgoBU as BU
 import qualified SynCompAlgoTD as TD
 import qualified SynCompAlgoPEPM as PEPM
 
+-- For experiment
+import qualified SynCompAlgoBUTree as BUTree
+
 import TokenInterface
 import Config
 import SynCompAlgoUtil
@@ -27,6 +30,7 @@ chooseCompCandidatesFn =
     choose 0 = BU.compCandidates
     choose 1 = TD.compCandidates
     choose 2 = PEPM.compCandidates
+    choose 3 = BUTree.compCandidates
     choose _ = defaultCompCandidatesFn  -- by default !
 
 defaultCompCandidatesFn :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
