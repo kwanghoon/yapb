@@ -308,7 +308,7 @@ simulReduce ccOption symbols prnum len i state stk =
                          children   = reverse (take rhsLength revSymbols)
                          therest    = drop rhsLength $ revSymbols
                      in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
-                         , cc_gs_level ccOption + rhsLength - 1)
+                         , cc_gs_level ccOption {- + rhsLength - 1 -} )
                 else (symbols, cc_gs_level ccOption)
 
           if isSimple then  -- simple mode
