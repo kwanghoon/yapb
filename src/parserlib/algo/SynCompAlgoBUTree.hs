@@ -359,7 +359,12 @@ simulGoto ccOption symbols state stk =
             do
               let len = length nontermStateList
               listOfList <-
-                mapM (\ ((nonterminal,snext),i) -> 
+                mapM (\ ((nonterminal,snext),i) ->
+                        
+                        if null symbols   -- I do not want any nonterminal to be the first symbol!
+                        then return []
+                        
+                        else
                           let stk1 = push (StkNonterminal Nothing nonterminal) stk in
                           let stk2 = push (StkState snext) stk1 in
 
@@ -462,21 +467,21 @@ repGotoOrShift ccOption symbols state stk =
                          in
 
                          -- both goto and shift only once 
-                         if gs_level (cc_searchState ccOption) == cc_gs_level ccOption
-                         then
+                         -- if gs_level (cc_searchState ccOption) == cc_gs_level ccOption
+                         -- then
 
-                           do listOfList2 <- simulGoto ccOption' symbols state stk
-                              listOfList3 <- simulShift ccOption' symbols state stk
-                              return $ listOfList1 ++ listOfList2 ++ listOfList3
+                         --   do listOfList2 <- simulGoto ccOption' symbols state stk
+                         --      listOfList3 <- simulShift ccOption' symbols state stk
+                         --      return $ listOfList1 ++ listOfList2 ++ listOfList3
 
-                         else
+                         -- else
 
-                           do listOfList2 <- simulGoto ccOption' symbols state stk
+                           do listOfList2 <- simulShift ccOption' symbols state stk      -- Shift first Goto Next!
 
                               if null listOfList2
                               then
 
-                                do listOfList3 <- simulShift ccOption' symbols state stk
+                                do listOfList3 <- simulGoto ccOption' symbols state stk
                                    return $ listOfList1 ++ listOfList2 ++ listOfList3
 
                               else
@@ -487,13 +492,6 @@ repGotoOrShift ccOption symbols state stk =
 
                   else do return listOfList1
 
--- Todo: repReduce를 하지 않고
---       Reduce 액션이 있는지 보고
---       없으면 goto or shift 진행하고
---       있으면 reduce한번하고 종료!
-
---       현재 구현은 repReduce 결과가 널인지 검사해서 진행 또는 종료
---       Reduce 액션이 있어도 진행될 수 있음!
 
 
 
