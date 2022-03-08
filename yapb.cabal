@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 438d10810e78a6fc54ed9b683b72afe21b554d20611996c5b4ad8e20f1a9c8f3
+-- hash: 1d5fb6cd20b2a1521c4c26ab92651dbd5abaffad85de4ecbb28d491eac58e6e6
 
 name:           yapb
 version:        0.1.4
@@ -48,6 +48,7 @@ library
       Config
       SynCompAlgoBU
       SynCompAlgoBUTree
+      SynCompAlgoBUTreeNested
       SynCompAlgoTD
       SynCompAlgoPEPM
       SynCompAlgoUtil
