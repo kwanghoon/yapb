@@ -94,47 +94,48 @@ extendedNestedCandidates
        -> IO [(State, Stack token ast, [CandidateTree])]
        
 extendedNestedCandidates ccOption initStateStkCandsList =
-  let debugFlag = cc_debugFlag ccOption
-      r_level   = cc_r_level ccOption
+  error "extendedNestedCandidates: should not be called"
+  -- let debugFlag = cc_debugFlag ccOption
+  --     r_level   = cc_r_level ccOption
       
-      f (state, stk, symbols) =
-          debug debugFlag "Given " $ 
-          debug debugFlag (" - state " ++ show state) $ 
-          debug debugFlag (" - stack " ++ prStack stk) $ 
-          debug debugFlag (" - cand  " ++ show symbols) $ 
-          debug debugFlag "" $ 
+  --     f (state, stk, symbols) =
+  --         debug debugFlag "Given " $ 
+  --         debug debugFlag (" - state " ++ show state) $ 
+  --         debug debugFlag (" - stack " ++ prStack stk) $ 
+  --         debug debugFlag (" - cand  " ++ show symbols) $ 
+  --         debug debugFlag "" $ 
 
-          do repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
+  --         do repReduce ccOption{cc_simpleOrNested=True} {- symbols -} [] state stk
 
-  in
-  if r_level > 0
-  then
-    debug debugFlag "[extendedNestedCandidates] :" $ 
-      multiDbg (map (\(state, stk, cand) ->
-                     debug debugFlag (" - state " ++ show state) $
-                     debug debugFlag (" - stack " ++ prStack stk) $
-                     debug debugFlag (" - cand  " ++ show cand) $
-                     debug debugFlag ("")
-                ) initStateStkCandsList) $
+  -- in
+  -- if r_level > 0
+  -- then
+  --   debug debugFlag "[extendedNestedCandidates] :" $ 
+  --     multiDbg (map (\(state, stk, cand) ->
+  --                    debug debugFlag (" - state " ++ show state) $
+  --                    debug debugFlag (" - stack " ++ prStack stk) $
+  --                    debug debugFlag (" - cand  " ++ show cand) $
+  --                    debug debugFlag ("")
+  --               ) initStateStkCandsList) $
 
-    do stateStkCandsListList <- mapM f initStateStkCandsList
+  --   do stateStkCandsListList <- mapM f initStateStkCandsList
 
-       if null stateStkCandsListList
-         then return initStateStkCandsList
-         else do nextStateStkCandsList <-
-                   extendedNestedCandidates ccOption{cc_r_level=r_level-1}
-                      [ (toState, toStk, fromCand ++ toCand)
+  --      if null stateStkCandsListList
+  --        then return initStateStkCandsList
+  --        else do nextStateStkCandsList <-
+  --                  extendedNestedCandidates ccOption{cc_r_level=r_level-1}
+  --                     [ (toState, toStk, fromCand ++ toCand)
 
-                      | ((fromState, fromStk, fromCand), toList)
-                          <- zip initStateStkCandsList stateStkCandsListList
+  --                     | ((fromState, fromStk, fromCand), toList)
+  --                         <- zip initStateStkCandsList stateStkCandsListList
 
-                      , (toState, toStk, toCand) <- toList
-                      ]
+  --                     , (toState, toStk, toCand) <- toList
+  --                     ]
 
-                 return $ initStateStkCandsList ++ nextStateStkCandsList
+  --                return $ initStateStkCandsList ++ nextStateStkCandsList
 
-  else
-    return []
+  -- else
+  --   return []
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>

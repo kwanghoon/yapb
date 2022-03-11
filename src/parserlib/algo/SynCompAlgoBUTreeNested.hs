@@ -76,7 +76,7 @@ extendedCompCandidates ccOption symbols state stk = do
     (debug debugFlag ("(Max) gs level: " ++ show gs_level) 
      (debug debugFlag "" $ 
 
-      do (succContList,failContList) <- extendedNestedCandidates newCcOption [(state, stk, symbols)]
+      do (succContList,_) <- extendedNestedCandidates newCcOption [(state, stk, symbols)]
          return (map (\(a,b,c)->c) succContList, newDisplay) )))
 
   -- where
@@ -133,7 +133,7 @@ extendedNestedCandidates ccOption initStateStkCandsList =
     do succFailContListList <- mapM simpleRepReduce initStateStkCandsList
 
        if null succFailContListList
-         then return ([], initStateStkCandsList)
+         then return ([], [])
          else do let succContListList = map fst succFailContListList
                  let failContListList = map snd succFailContListList
 
@@ -143,10 +143,11 @@ extendedNestedCandidates ccOption initStateStkCandsList =
                  let nextSuccContListList = map fst nextSuccFailContListList
                  let nextFailContListList = map snd nextSuccFailContListList
 
-                 return (concat nextSuccContListList, concat nextFailContListList)
+                 return ( concat succContListList ++ concat nextSuccContListList
+                        , concat nextFailContListList)
 
   else
-    return ([], initStateStkCandsList)
+    return ([], [])
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -167,8 +168,9 @@ repReduce ccOption symbols state stk =
 
      if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
      then 
-          debug flag (prlevel level ++ "accept: " ++ show state) $ 
-          return ([], [])  -- Todo: failCont is [] ??
+          debug flag (prlevel level ++ "ACCEPT: " ++ show state) $ 
+           debug flag (prlevel level ++ " - FOUND: " ++ show symbols) $
+            return ([], [])  -- Todo: succCont is [(state,stk,symbols)], and failCont is [] ??
 
      else do
             case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
@@ -289,7 +291,8 @@ simulReduce ccOption symbols prnum len i state stk =
              
              debug flag (prlevel level ++ " - FOUND: " ++ show symbols) $
               debug flag "" $
-               return ([(toState,stk3,symbols)], [(toState,stk3,reducedSymbols)])  -- Note: toState and stk3 are after the reduction, but symbols are not!!
+               -- Note: toState and stk3 are after the reduction, but symbols are not!!
+               return ([(toState,stk3,symbols)], [(toState,stk3,reducedSymbols)])  
                
        else
           -- do let stk1 = drop (rhsLength*2) stk
@@ -343,7 +346,7 @@ simulReduce ccOption symbols prnum len i state stk =
 
                  return (if null symbols
                          then listOfList
-                         else {- (toState, stk3, symbols) : -} map (f symbols) listOfList
+                         else {- (toState, stk3, symbols) : -} {- Todo: ??? map (f symbols) -} listOfList
                         , failCont)  -- Q: symbols: 필요?
             else if isFinalReduce searchState then
               do return ([], [(state,stk,symbols)])
@@ -505,12 +508,17 @@ repGotoOrShift ccOption symbols state stk =
 
                          -- else
 
-                           do (listOfList2, failCont2) <- simulShift ccOption' symbols state stk      -- Shift first Goto Next!
+                          let isInnerMostLevel = r_level (cc_searchState ccOption) == cc_r_level ccOption
+                              simulFirst  = if isInnerMostLevel then simulShift else simulGoto
+                              simulSecond = if isInnerMostLevel then simulGoto  else simulShift 
+                          in
+
+                           do (listOfList2, failCont2) <- simulFirst ccOption' symbols state stk      -- Shift first Goto Next!
 
                               if null listOfList2
                               then
 
-                                do (listOfList3, failCont3) <- simulGoto ccOption' symbols state stk
+                                do (listOfList3, failCont3) <- simulSecond ccOption' symbols state stk
                                    return $ (listOfList1 ++ listOfList2 ++ listOfList3, failCont3)
 
                               else
