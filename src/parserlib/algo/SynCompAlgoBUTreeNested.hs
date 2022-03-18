@@ -110,19 +110,20 @@ extendedNestedCandidates ccOption initStateStkCandsList =
   let debugFlag = cc_debugFlag ccOption
       r_level   = cc_r_level ccOption
       
-      simpleRepReduce (state, stk, symbols) =
-          debug debugFlag "Given " $ 
-          debug debugFlag (" - state " ++ show state) $ 
-          debug debugFlag (" - stack " ++ prStack stk) $ 
-          debug debugFlag (" - cand  " ++ show symbols) $ 
-          debug debugFlag "" $ 
+      -- simpleRepReduce (state, stk, symbols) =
+      --     debug debugFlag "Given " $ 
+      --     debug debugFlag (" - state " ++ show state) $ 
+      --     debug debugFlag (" - stack " ++ prStack stk) $ 
+      --     debug debugFlag (" - cand  " ++ show symbols) $ 
+      --     debug debugFlag (" - search " ++ show (cc_searchState ccOption)) $ 
+      --     debug debugFlag "" $ 
 
-          do repReduce ccOption{cc_simpleOrNested=True} symbols state stk
+      --     do repReduce ccOption{cc_simpleOrNested=True} symbols state stk
 
   in
   if r_level > 0
   then
-    debug debugFlag "[extendedNestedCandidates] :" $ 
+    debug debugFlag ("[Extended Nested Candidates] : " ++ show r_level) $ 
       multiDbg (map (\(state, stk, cand) ->
                      debug debugFlag (" - state " ++ show state) $
                      debug debugFlag (" - stack " ++ prStack stk) $
@@ -130,7 +131,22 @@ extendedNestedCandidates ccOption initStateStkCandsList =
                      debug debugFlag ""
                 ) initStateStkCandsList) $
 
-    do succFailContListList <- mapM simpleRepReduce initStateStkCandsList
+    do succFailContListList <-
+         mapM
+           (\(state, stk, symbols) ->
+               debug debugFlag "Given " $ 
+               debug debugFlag (" - state " ++ show state) $ 
+               debug debugFlag (" - stack " ++ prStack stk) $ 
+               debug debugFlag (" - cand  " ++ show symbols) $ 
+               debug debugFlag "" $ 
+
+               do (succContList, failContList) <-
+                    repReduce ccOption{cc_simpleOrNested=True} symbols state stk
+                    
+                  return (succContList, failContList)
+                  
+           ) initStateStkCandsList
+           
 
        if null succFailContListList
          then return ([], [])
@@ -164,7 +180,7 @@ repReduce ccOption symbols state stk =
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
-  in -- do debug flag $ prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)
+  in -- debug flag (prlevel level ++ "[repReduce] " ++ show (cc_searchState ccOption)) $
 
      if null [True | ((s,lookahead),Accept) <- actionTable, state==s] == False
      then 
@@ -258,11 +274,8 @@ simulReduce ccOption symbols prnum len i state stk =
                  "[" ++ show (cc_searchState ccOption) ++ "] "  ++
                  "at " ++ show state  ++ " " ++
                  showProductionRule (productionRules !! prnum))   $ 
-     -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
-     -- debug flag (prlevel level ++ " - State " ++ show state) $ 
      debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
      debug flag (prlevel level ++ " - Symbols: " ++ show symbols) $ 
-     -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
      debug flag "" $ 
 
      if isFinalReduce searchState 
@@ -292,30 +305,30 @@ simulReduce ccOption symbols prnum len i state stk =
              debug flag (prlevel level ++ " - FOUND: " ++ show symbols) $
               debug flag "" $
                -- Note: toState and stk3 are after the reduction, but symbols are not!!
-               return ([(toState,stk3,symbols)], [(toState,stk3,reducedSymbols)])  
+               return ([(toState,stk3,reducedSymbols)], [(toState,stk3,reducedSymbols)])  
                
        else
-          -- do let stk1 = drop (rhsLength*2) stk
-          --    let topState = currentState stk1
-          --    let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
-          --          Just state -> state
-          --          Nothing -> error $ "[simulReduce] Must not happen: lhs: "
-          --                             ++ lhs ++ " state: " ++ show topState
-          --    let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
-          --    let stk3 = push (StkState toState) stk2
+          do let stk1 = drop (rhsLength*2) stk
+             let topState = currentState stk1
+             let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+                   Just state -> state
+                   Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                      ++ lhs ++ " state: " ++ show topState
+             let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+             let stk3 = push (StkState toState) stk2
              
-          --    let (reducedSymbols, gs) =
-          --         if rhsLength <= length symbols
-          --         then let revSymbols = reverse symbols
-          --                  children   = reverse (take rhsLength revSymbols)
-          --                  therest    = drop rhsLength $ revSymbols
-          --              in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
-          --                  , cc_gs_level ccOption + rhsLength - 1)
-          --         else (symbols, cc_gs_level ccOption)
+             let (reducedSymbols, gs) =
+                  if rhsLength <= length symbols
+                  then let revSymbols = reverse symbols
+                           children   = reverse (take rhsLength revSymbols)
+                           therest    = drop rhsLength $ revSymbols
+                       in  ( reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
+                           , cc_gs_level ccOption + rhsLength - 1)
+                  else (symbols, cc_gs_level ccOption)
                   
           --    repReduce ccOption {cc_printLevel=level+1} reducedSymbols toState stk3
              
-          return ([], [(state,stk,symbols)])
+             return ([], [(toState,stk3,reducedSymbols)])  -- Todo: refactoring
 
      else
        do let stk1 = drop (rhsLength*2) stk
