@@ -24,6 +24,7 @@ dependencies:
 - hspec
 - transformers
 - mtl
+- deepseq >= 1.4.4.0
 
 # --------------------------------------------------
 # -- Main library: YAPB (Yet Another Parser Builder)

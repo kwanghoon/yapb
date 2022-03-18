@@ -5,8 +5,8 @@ import Debug.Trace (trace)
 
 -- | Candidates
 data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate String 
-    TerminalSymbol String
-  | NonterminalSymbol String
+    TerminalSymbol !String
+  | NonterminalSymbol !String
   deriving Eq
 
 -- | Candidate tree
@@ -22,8 +22,8 @@ data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate Stri
 -}
 
 data CandidateTree =
-    Leaf Candidate 
-  | Node Candidate [CandidateTree]
+    Leaf !Candidate 
+  | Node !Candidate ![CandidateTree]
   deriving (Eq,Show)
 
 type CandidateForest = [CandidateTree]
@@ -62,16 +62,16 @@ data Automaton token ast =
 
 -- | Computing candidates
 data CompCandidates token ast = CompCandidates {
-    cc_debugFlag :: Bool,
-    cc_printLevel :: Int,  
-    cc_maxLevel :: Int,  
+    cc_debugFlag :: !Bool,
+    cc_printLevel :: !Int,  
+    cc_maxLevel :: !Int,  
     
-    cc_r_level :: Int,         -- for new algorithm
-    cc_gs_level :: Int,        --
+    cc_r_level :: !Int,         -- for new algorithm
+    cc_gs_level :: !Int,        --
     
-    cc_simpleOrNested :: Bool,
-    cc_automaton :: Automaton token ast,
-    cc_searchState :: SearchState
+    cc_simpleOrNested :: !Bool,
+    cc_automaton :: !(Automaton token ast),
+    cc_searchState :: !SearchState
   }
 
 
@@ -81,9 +81,9 @@ type R_Level  = Int
 type GS_Level = Int
 
 data SearchState =
-    SS_InitReduces R_Level GS_Level -- Reduce^*
-  | SS_GotoOrShift R_Level GS_Level -- (Goto | Shift)
-  | SS_FinalReduce R_Level GS_Level -- Reduce
+    SS_InitReduces !R_Level !GS_Level -- Reduce^*
+  | SS_GotoOrShift !R_Level !GS_Level -- (Goto | Shift)
+  | SS_FinalReduce !R_Level !GS_Level -- Reduce
 
 instance Show SearchState where
   showsPrec p (SS_InitReduces r gs) = (++) $ "I:" ++ show r ++ ":" ++ show gs

@@ -9,6 +9,7 @@ import Config
 
 import Data.Typeable
 import Data.List (nub)
+import Control.DeepSeq
 
 --
 compCandidates
@@ -160,7 +161,7 @@ extendedNestedCandidates ccOption initStateStkCandsList =
                  let nextFailContListList = map snd nextSuccFailContListList
 
                  return ( concat succContListList ++ concat nextSuccContListList
-                        , concat nextFailContListList)
+                        , concat nextFailContListList )
 
   else
     return ([], [])
@@ -267,6 +268,7 @@ simulReduce ccOption symbols prnum len i state stk =
       rhsLength = length rhs
 
       len_leafs_symbols = length (leafs symbols)
+      len_symbols       = length symbols
   in
      -- debug flag $ prlevel level ++ "[simulReduce] " ++ show (cc_searchState ccOption)
 
@@ -281,8 +283,11 @@ simulReduce ccOption symbols prnum len i state stk =
      if isFinalReduce searchState 
      then
        -- Todo: Sometime (>) is correct sometimes (>=) is correct!
+       
        -- if rhsLength >= length (leafs symbols) && {- length symbols > 0 && -} length (leafs symbols) > 0
+       
        if rhsLength >= len_leafs_symbols && len_leafs_symbols > 0
+       -- if rhsLength >= len_symbols && len_symbols > 0
        then
           do let stk1 = drop (rhsLength*2) stk
              let topState = currentState stk1
@@ -504,7 +509,7 @@ repGotoOrShift ccOption symbols state stk =
 
                 if null listOfList1 -- || isInitReduces (cc_searchState ccOption)
                   then
-                       if gs_level (cc_searchState ccOption) - 1 > 0 then
+                       if gs_level (cc_searchState ccOption) - 1 > 0 then  -- Todo: -1 ???
                          let ccOption' = ccOption{cc_searchState=
                                              SS_GotoOrShift
                                                (r_level (cc_searchState ccOption))
@@ -521,7 +526,7 @@ repGotoOrShift ccOption symbols state stk =
 
                          -- else
 
-                          let isInnerMostLevel = r_level (cc_searchState ccOption) == cc_r_level ccOption
+                          let isInnerMostLevel = True -- r_level (cc_searchState ccOption) == cc_r_level ccOption
                               simulFirst  = if isInnerMostLevel then simulShift else simulGoto
                               simulSecond = if isInnerMostLevel then simulGoto  else simulShift 
                           in
@@ -532,10 +537,11 @@ repGotoOrShift ccOption symbols state stk =
                               then
 
                                 do (listOfList3, failCont3) <- simulSecond ccOption' symbols state stk
-                                   return $ (listOfList1 ++ listOfList2 ++ listOfList3, failCont3)
+                                   return $ ( listOfList1 ++ listOfList2 ++ listOfList3
+                                            , failCont1 ++ failCont2 ++ failCont3 )
 
                               else
-                                return $ (listOfList1 ++ listOfList2, failCont2)
+                                return $ (listOfList1 ++ listOfList2, failCont1 ++ failCont2)
 
                        else
                          return (listOfList1, failCont1)  -- Q: symbols or []
