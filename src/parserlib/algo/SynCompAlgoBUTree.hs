@@ -460,7 +460,7 @@ repGotoOrShift ccOption symbols state stk =
 
                 if null listOfList1 -- || isInitReduces (cc_searchState ccOption)
                   then
-                       if gs_level (cc_searchState ccOption) - 1 > 0 then
+                       if gs_level (cc_searchState ccOption) > 0 then -- Todo: deleted - 1 
                          let ccOption' = ccOption{cc_searchState=
                                              SS_GotoOrShift
                                                (r_level (cc_searchState ccOption))
