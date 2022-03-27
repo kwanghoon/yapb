@@ -22,6 +22,7 @@
 ~~~
 
 ### Tutorial
+- The most up-to-date examples are in app/{parser,ambiguous,error,syntaxcompletion}.
 - [How to write and run a parser](https://github.com/kwanghoon/yapb/blob/master/doc/Tutorial-parser.md)
 - [How to write and run a syntax completion server for Emacs](https://github.com/kwanghoon/yapb/blob/master/doc/Tutorial-syntax-completion.md)
 - [For AST and interpreter: A top-down approach to writing a compiler for arithmetic expressions](https://github.com/kwanghoon/swlab_parser_builder/blob/master/doc/tutorial_swlab_parser_builder.txt) Written in Korean.
