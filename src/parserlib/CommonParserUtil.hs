@@ -492,13 +492,13 @@ runYapbAutomaton
   -- AST
   ST.StateT (LexerParserState a) m ast
   
-runYapbAutomaton flag (rm_spec @ AutomatonSpec {
+runYapbAutomaton flag (rm_spec@(AutomatonSpec {
       am_initState=initState,
       am_actionTbl=actionTbl,
       am_gotoTbl=gotoTbl,
       am_prodRules=prodRules,
       am_parseFuns=pFunList
-   }) nextTerminal =
+   })) nextTerminal =
 
       do let initStack = push (StkState initState) emptyStack
          run Nothing initStack Nothing
@@ -851,13 +851,13 @@ arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state@
 
 _handleParseError
   compCandidatesFn 
-  (hpeOption @ HandleParseError {
+  (hpeOption@(HandleParseError {
       debugFlag=flag,
       searchMaxLevel=maxLevel,
       simpleOrNested=isSimple,
       postTerminalList=terminalListAfterCursor,
       nonterminalToStringMaybe=_nonterminalToStringMaybe,
-      presentation=howtopresent})
+      presentation=howtopresent}))
   state stk automaton = 
   let ccOption = CompCandidates {
         cc_debugFlag=flag,
