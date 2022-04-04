@@ -55,11 +55,11 @@ tokenizeArrow str =
     [(token,therest)]      -> error ("No arrow found: " ++ token)
     
 tokenizeRhs :: String  -> [String]
-tokenizeRhs str = 
-  case lex str of
-    []                -> []
-    [("",therest)]    -> []
-    [(token,therest)] -> token : tokenizeRhs therest
+tokenizeRhs str = words str  -- Terminals and nonterminls are space-separated words in RHS
+  -- case lex str of
+  --   []                -> []
+  --   [("",therest)]    -> []
+  --   [(token,therest)] -> token : tokenizeRhs therest
 
 -- Utility
 concatWith :: [String] -> String -> String

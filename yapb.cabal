@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 32f1cadd82bb926fdd3eb1f2135b5f51d9810df76c812b40a242371ea1ae14e0
+-- hash: d0b9a77c0d67fbcf2f0f940bd558e929e1fa2e0e1ca4d08e171c07c0244e03ad
 
 name:           yapb
-version:        0.2.1
+version:        0.2.2
 synopsis:       Yet Another Parser Builder (YAPB)
 description:    A programmable LALR(1) parser builder system. Please see the README on GitHub at <https://github.com/kwanghoon/yapb#readme>
 category:       parser builder

@@ -4,6 +4,7 @@ import AutomatonType
 import SaveProdRules(tokenizeLhs)
 import System.IO
 import Text.Read (readMaybe)
+import Data.Char (isSpace)
 
 loadAutomaton :: String -> String -> String
               -> IO (ActionTable, GotoTable, ProdRules)
@@ -35,7 +36,12 @@ tokenizeStateNumInAction str =
 
 tokenizeTerminalInAction :: String -> IO (String, Action, ActionTable)
 tokenizeTerminalInAction str =
-  case lex str of
+  let str' = dropWhile Data.Char.isSpace str
+      terminal = takeWhile (not . Data.Char.isSpace) str'
+      str'' = drop (length terminal) str'
+      lexRes = if length terminal > 0 then [(terminal,str'')] else [("",str'')]
+  in
+  case lexRes of
     [] -> fail "No terminal found (1)"
     [("", therest)] -> fail "No terminal found (2)"
     [(terminal, therest)] -> do
@@ -56,6 +62,7 @@ tokenizeActioninAction str =
         "Accept" -> do
           actTbl <- tokenizeStateNumInAction therest
           return (Accept, actTbl)
+        _ -> fail ("Unexpected action: " ++ action)
 
 tokenizeShiftReduceStateNumInAction :: String -> (Int -> Action)
   -> IO (Action, ActionTable)
