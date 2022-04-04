@@ -50,6 +50,10 @@ import System.Directory
 import Control.Exception
 import System.IO.Error hiding (catch)
 
+import System.TimeIt (timeItT)
+import Control.Monad.IO.Class(MonadIO(liftIO))
+import Text.Printf
+
 -- | Common parser utilities:
 -- |
 -- |  1. A parser(and lexer) specification interface to the parser generator
@@ -874,7 +878,7 @@ _handleParseError
           Nothing -> \s -> "..."
           Just fn -> fn
   in
-  do (candidateListList, emacsDisplay) <- compCandidatesFn ccOption 0 [] state stk
+  do (candidateListList, emacsDisplay) <- timeItShow (compCandidatesFn ccOption 0 [] state stk)
      let colorListList_symbols =
           [ filterCandidates candidateList terminalListAfterCursor
           | candidateList <- candidateListList ]
@@ -995,3 +999,10 @@ concatStrList (str:strs) = str ++ " " ++ concatStrList strs
 -- debug :: Bool -> String -> a -> a
 -- debug flag msg x = if flag then trace msg x else x
 
+--
+timeItShow :: (MonadIO m, Show a) => m a -> m a
+timeItShow ioa =
+  do (t,a) <- timeItT ioa
+     liftIO $ printf ("Time: %6.2f\n") t
+     return a
+     

@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d0b9a77c0d67fbcf2f0f940bd558e929e1fa2e0e1ca4d08e171c07c0244e03ad
+-- hash: f77819b422fe4bf504a61917dc5fbf6875bc35d76c7f3ea16707505b9f6134ed
 
 name:           yapb
-version:        0.2.2
+version:        0.2.3
 synopsis:       Yet Another Parser Builder (YAPB)
 description:    A programmable LALR(1) parser builder system. Please see the README on GitHub at <https://github.com/kwanghoon/yapb#readme>
 category:       parser builder
@@ -73,6 +73,7 @@ library
     , network >=3.1.1 && <3.2
     , process >=1.6.5 && <1.7
     , regex-tdfa >=1.3.1 && <1.4
+    , timeit >=2.0
     , transformers
   default-language: Haskell2010
 
@@ -96,6 +97,7 @@ executable ambiguous-exe
     , hspec
     , mtl
     , regex-tdfa
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -112,6 +114,7 @@ executable conv-exe
     , deepseq >=1.4.4.0
     , hspec
     , mtl
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -136,6 +139,7 @@ executable error-exe
     , hspec
     , mtl
     , regex-tdfa
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -160,6 +164,7 @@ executable parser-exe
     , hspec
     , mtl
     , regex-tdfa
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -184,6 +189,7 @@ executable syncomp-exe
     , hspec
     , mtl
     , regex-tdfa
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -200,6 +206,7 @@ executable yapb-exe
     , deepseq >=1.4.4.0
     , hspec
     , mtl
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010
@@ -218,6 +225,7 @@ test-suite yapb-test
     , hspec
     , mtl
     , process
+    , timeit >=2.0
     , transformers
     , yapb
   default-language: Haskell2010

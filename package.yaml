@@ -1,5 +1,5 @@
 name:                yapb
-version:             0.2.2
+version:             0.2.3
 github:              "kwanghoon/yapb"
 license:             BSD3
 author:              "Kwanghoon Choi"
@@ -25,6 +25,7 @@ dependencies:
 - transformers
 - mtl
 - deepseq >= 1.4.4.0
+- timeit >= 2.0
 
 # --------------------------------------------------
 # -- Main library: YAPB (Yet Another Parser Builder)
