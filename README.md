@@ -14,7 +14,8 @@
   - ambiguous-exe: an arithmetic parser with the ambiguous grammar but backed by precedence attributes
   - error-exe: a demo for error recovery by an interplay between a lexer and a parser through a monadic interface
   - syncomp-exe: a syntax completion server for Emacs
-- Applications using YAPB:
+
+### Applications using YAPB:
   - Microsoft SmallBasic parser: https://github.com/kwanghoon/sbparser
   - Polyrmorphic RPC calculus parser: https://github.com/kwanghoon/polyrpc
   - C11 parser: https://github.com/kwanghoon/c11parser
