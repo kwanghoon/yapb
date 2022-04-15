@@ -71,7 +71,9 @@ data CompCandidates token ast = CompCandidates {
     
     cc_simpleOrNested :: !Bool,
     cc_automaton :: !(Automaton token ast),
-    cc_searchState :: !SearchState
+    cc_searchState :: !SearchState,
+
+    cc_isAbleToSearch :: String -> Bool 
   }
 
 

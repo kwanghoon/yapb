@@ -15,7 +15,8 @@ module CommonParserUtil
   , initState, runAutomaton
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
-  , successfullyParsed, handleLexError, handleParseError)
+  , successfullyParsed, handleLexError, handleParseError
+  , SynCompSpec(..))
 where
 
 import Attrs
@@ -67,6 +68,20 @@ import Text.Printf
 -- |  - Common elements   : line, column, text
 -- |  - Extended elements : a  (E.g., what the lexer and the parser want to share)
 -- |  - Extended effects  : m  (E.g., typically, IO)
+
+-- | Data structure 
+-- |  (Lexer)              ===> LexerSpec         (written by applications)
+-- |  (Parser)             ===> ParserSpec        (written by applications)
+-- |  (Automaton)          ===> AutomatonSpec     (constructed by parsing() and used by runAutomaton)
+-- |
+-- |  (Automaton)          ===> ParseError        (thrown by the automaton.   NotFoundAction | NotFoundGoto
+-- |                                               for the parser state on the parse error)
+-- |
+-- |  (Application)        ===> HandleParseError  (for options set by applications
+-- |                                               to control the syntax completer)
+-- |
+-- |  (Syntax completer)   ===> CompCandidates    (for the syntax completer options
+-- |                                               used by compCandidatesFn)
 
 type Line               = Int
 type Column             = Int
@@ -120,9 +135,13 @@ data ParserSpec token ast m a =
                gotoTblFile    :: String,   -- ex) gototable.txt
                grammarFile    :: String,   -- ex) grammar.txt
                parserSpecFile :: String,   -- ex) mygrammar.grm
-               genparserexe   :: String    -- ex) genlrparse-exe
+               genparserexe   :: String,   -- ex) genlrparse-exe
+               synCompSpec    :: Maybe SynCompSpec
              }
 
+data SynCompSpec =
+  SynCompSpec { isAbleToSearch :: String -> Bool   -- terminasls or non-terminals
+              }
 --------------------------------------------------------------------------------
 -- | Stack
 --------------------------------------------------------------------------------
@@ -408,11 +427,11 @@ lpStateFrom (NotFoundGoto   _ _ _ _ _ _ lpstate _) = lpstate
 
 data AutomatonSpec token ast m a =
   AutomatonSpec {
-    am_actionTbl :: ActionTable,
-    am_gotoTbl :: GotoTable,
-    am_prodRules :: ProdRules,
-    am_parseFuns :: ParseActionList token ast m a,
-    am_initState :: Int
+    am_actionTbl   :: ActionTable,
+    am_gotoTbl     :: GotoTable,
+    am_prodRules   :: ProdRules,
+    am_parseFuns   :: ParseActionList token ast m a,
+    am_initState   :: Int
   }
 
 initState = 0
@@ -664,6 +683,8 @@ parsing flag parserSpec init_lp_state lexer eot = do
 
     tokenAttrs    = toTokenAttrs tokenAttrList
     tokenAttrsStr = show tokenAttrs
+
+    synCompSpecMaybe = synCompSpec parserSpec
     
     pSpecList = map (\(f,s,t)->f) (parserSpecList parserSpec)
     pFunList  = map (\(f,s,t)->s) (parserSpecList parserSpec)
@@ -791,16 +812,19 @@ data HandleParseError token = HandleParseError {
     simpleOrNested :: Bool,
     postTerminalList :: [Terminal token],
     nonterminalToStringMaybe :: Maybe (String->String),
-    presentation :: Int  -- 0: default, no transformation. 1: a list of the first symbols
+    presentation :: Int,  -- 0: default, no transformation. 1: a list of the first symbols
+    hpe_synCompSpec    :: Maybe SynCompSpec
   }
 
-defaultHandleParseError = HandleParseError {
+defaultHandleParseError lexerSpec parserSpec =
+  HandleParseError {
     debugFlag = False,
     searchMaxLevel = 1,
     simpleOrNested = True,
     postTerminalList = [],
     nonterminalToStringMaybe = Nothing,
-    presentation = 0
+    presentation = 0,
+    hpe_synCompSpec = synCompSpec parserSpec
   }
 
 -- | handleParseError
@@ -861,17 +885,28 @@ _handleParseError
       simpleOrNested=isSimple,
       postTerminalList=terminalListAfterCursor,
       nonterminalToStringMaybe=_nonterminalToStringMaybe,
-      presentation=howtopresent}))
+      presentation=howtopresent,
+      hpe_synCompSpec=synCompSpecMaybe}))
   state stk automaton = 
-  let ccOption = CompCandidates {
-        cc_debugFlag=flag,
-        cc_printLevel=0,
-        cc_maxLevel=maxLevel,
-        cc_simpleOrNested=isSimple,
-        cc_automaton=automaton,
-        cc_searchState = initSearchState init_r_level init_gs_level,
-        cc_r_level = init_r_level,  
-        cc_gs_level = init_gs_level}
+  let ccOption =
+        CompCandidates
+        {
+          cc_debugFlag=flag,
+          cc_printLevel=0,
+          cc_maxLevel=maxLevel,
+          
+          cc_r_level = init_r_level,  
+          cc_gs_level = init_gs_level,
+          
+          cc_simpleOrNested=isSimple,
+          cc_automaton=automaton,
+          cc_searchState = initSearchState init_r_level init_gs_level,
+          
+          cc_isAbleToSearch =
+            case synCompSpecMaybe of
+              Nothing -> (\sym -> True)                      -- Every symbol
+              Just synCompSpec -> isAbleToSearch synCompSpec -- Only those symbols that this function returns true
+        }
   in
   let convFun =
         case _nonterminalToStringMaybe of

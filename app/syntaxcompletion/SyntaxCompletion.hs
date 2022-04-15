@@ -42,12 +42,14 @@ computeCand debug programTextUptoCursor programTextAfterCursor isSimpleMode =
                  compCandidates <- chooseCompCandidatesFn
   
                  handleParseError compCandidates
-                   (defaultHandleParseError {
+                   (defaultHandleParseError lexerSpec parserSpec)
+                    {
                        debugFlag=debug,
                        searchMaxLevel=maxLevel,
                        simpleOrNested=isSimpleMode,
                        postTerminalList=[],  -- terminalListAfterCursor is set to []!
-                       nonterminalToStringMaybe=Nothing})
+                       nonterminalToStringMaybe=Nothing
+                    }
                    parseError))
 
       `catch` \lexError ->  case lexError :: LexError of  _ -> handleLexError

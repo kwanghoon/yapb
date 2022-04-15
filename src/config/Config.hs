@@ -29,4 +29,9 @@ readConfig =
                  Nothing -> error $ "readConfig: unexpected configuration\n" ++ show text
        else return Nothing
 
-     
+writeConfig :: Configuration -> IO ()
+writeConfig config =
+  writeFile configFileName (show config)
+
+         
+         

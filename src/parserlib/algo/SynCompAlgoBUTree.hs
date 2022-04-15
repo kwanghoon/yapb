@@ -345,6 +345,8 @@ simulGoto ccOption symbols state stk =
       level           = cc_printLevel ccOption
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
+
+      canSearch       = cc_isAbleToSearch ccOption
       
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
@@ -353,7 +355,7 @@ simulGoto ccOption symbols state stk =
 
         case nub [ (nonterminal,toState)
                  | ((fromState,nonterminal),toState) <- gotoTable
-                 , state==fromState ] of
+                 , state==fromState,  canSearch nonterminal ] of
           [] -> do return []
 
           nontermStateList ->
@@ -397,11 +399,13 @@ simulShift ccOption symbols state stk =
       isSimple        = cc_simpleOrNested ccOption
       automaton       = cc_automaton ccOption
       
+      canSearch       = cc_isAbleToSearch ccOption
+      
       actionTable     = actTbl automaton
       gotoTable       = gotoTbl automaton
       productionRules = prodRules automaton
   in
-  let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s]
+  let cand2 = nub [(terminal,snext) | ((s,terminal),Shift snext) <- actionTable, state==s, canSearch terminal]
       len = length cand2
   in do -- debug flag $ prlevel level ++ "[simulShift] " ++ show (cc_searchState ccOption)
 
