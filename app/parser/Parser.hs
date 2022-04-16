@@ -4,6 +4,8 @@ import CommonParserUtil
 import Token
 import Expr
 
+import ParserTime
+
 -- | Utility
 rule prodRule action              = (prodRule, action, Nothing  )
 ruleWithPrec prodRule action prec = (prodRule, action, Just prec)
@@ -66,7 +68,11 @@ parserSpec = ParserSpec
     parserSpecFile = "mygrammar.grm",
     genparserexe   = "yapb-exe",
 
-    synCompSpec = Nothing
+    synCompSpec = Nothing,
+    parserTime = ParserTime {
+                   pa_startTime=startTime,
+                   pa_finishTime=finishTime
+                 }
   }
 
 

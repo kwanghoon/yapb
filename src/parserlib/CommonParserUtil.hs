@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs #-}
 module CommonParserUtil
-  ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..)
+  ( LexerSpec(..), ParserSpec(..), AutomatonSpec(..),AutomatonTime(..)
   , LexerParserState, Line, Column
   , ProdRuleStr, ParseAction, ProdRulePrec
   , Stack, StkElem(..), push, pop, prStack
@@ -16,7 +16,9 @@ module CommonParserUtil
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
   , successfullyParsed, handleLexError, handleParseError
-  , SynCompSpec(..))
+  , SynCompSpec(..)
+  , ParserTime(..)
+  )
 where
 
 import Attrs
@@ -136,8 +138,15 @@ data ParserSpec token ast m a =
                grammarFile    :: String,   -- ex) grammar.txt
                parserSpecFile :: String,   -- ex) mygrammar.grm
                genparserexe   :: String,   -- ex) genlrparse-exe
-               synCompSpec    :: Maybe SynCompSpec
+               synCompSpec    :: Maybe SynCompSpec,
+               parserTime     :: ParserTime m a
              }
+
+data ParserTime m a =
+  ParserTime {
+    pa_startTime  :: ST.StateT (LexerParserState a) m Integer,
+    pa_finishTime :: Integer -> ST.StateT (LexerParserState a) m ()
+  }
 
 data SynCompSpec =
   SynCompSpec { isAbleToSearch :: String -> Bool   -- terminasls or non-terminals
@@ -431,7 +440,15 @@ data AutomatonSpec token ast m a =
     am_gotoTbl     :: GotoTable,
     am_prodRules   :: ProdRules,
     am_parseFuns   :: ParseActionList token ast m a,
-    am_initState   :: Int
+    am_initState   :: Int,
+    am_time        :: AutomatonTime m a
+  }
+
+data AutomatonTime m a =
+  AutomatonTime {
+    am_startTime  :: ST.StateT (LexerParserState a) m Integer,
+    am_finishTime :: Integer -> ST.StateT (LexerParserState a) m (),
+    am_cputime    :: Integer
   }
 
 initState = 0
@@ -496,7 +513,11 @@ runAutomaton flag amSpec init_lp_state lexer =
                Nothing -> return flag
                Just config -> return $ config_DEBUG config
 
-     ST.evalStateT (runYapbAutomaton flag amSpec (lexer flag)) init_lp_state
+     ST.evalStateT runYA init_lp_state
+     where
+       runYA =
+         do start_cputime <- am_startTime (am_time amSpec)
+            runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
   
 runYapbAutomaton
   :: (Monad m,
@@ -515,7 +536,7 @@ runYapbAutomaton
   -- AST
   ST.StateT (LexerParserState a) m ast
   
-runYapbAutomaton flag (rm_spec@(AutomatonSpec {
+runYapbAutomaton flag (am_spec@(AutomatonSpec {
       am_initState=initState,
       am_actionTbl=actionTbl,
       am_gotoTbl=gotoTbl,
@@ -574,6 +595,7 @@ runYapbAutomaton flag (rm_spec@(AutomatonSpec {
             Nothing ->
               -- No more way to proceed now!
               do lp_state <- ST.get
+                 (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
 
     -- separated to support the haskell layout rule
@@ -588,7 +610,9 @@ runYapbAutomaton flag (rm_spec@(AutomatonSpec {
           debug flag (terminalToString terminal) $ {- debug -}
           
           case stack !! 1 of
-            StkNonterminal (Just ast) _ -> return ast
+            StkNonterminal (Just ast) _ ->
+              do (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
+                 return ast
             StkNonterminal Nothing _ -> error "Empty ast in the stack nonterminal"
             _ -> error "Not Stknontermianl on Accept"
         
@@ -619,6 +643,7 @@ runYapbAutomaton flag (rm_spec@(AutomatonSpec {
                     case lookupGotoTable gotoTbl topState lhs of
                       Just state -> return state
                       Nothing -> do lp_state <- ST.get
+                                    (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
                                     throw (NotFoundGoto topState lhs stack
                                              actionTbl gotoTbl prodRules
                                                lp_state maybeStatus)
@@ -667,7 +692,13 @@ parsing flag parserSpec init_lp_state lexer eot = do
                        am_actionTbl=actionTbl,
                        am_gotoTbl=gotoTbl,
                        am_prodRules=prodRules,
-                       am_parseFuns=pFunList})
+                       am_parseFuns=pFunList,
+                       am_time=AutomatonTime {
+                           am_startTime=pa_startTime (parserTime parserSpec),
+                           am_finishTime=pa_finishTime (parserTime parserSpec),
+                           am_cputime  =0
+                           }
+                       })
                      init_lp_state lexer
             -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
             return ast
@@ -928,24 +959,24 @@ _handleParseError
       multiDbg (map (debug (flag || True)) (map show colorListList_symbols)) $ 
 
       debug (flag || True) "" $ 
-      multiDbg (map (debug (flag || True)) (map show rawStrListList)) $ 
+       multiDbg (map (debug (flag || True)) (map show rawStrListList)) $ 
 
-      debug (flag || True) "" $ 
+        debug (flag || True) "" $ 
 
      -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
      -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
 
-      let formattedStrList =
-            case howtopresent of
-              0 -> strList
-              1 -> nub [ if null strList then "" else head strList | strList <- emacsColorListList ]
-              _ -> error ("Does not support prsentation method: " ++ show howtopresent)
+         let formattedStrList =
+               case howtopresent of
+                 0 -> strList
+                 1 -> nub [ if null strList then "" else head strList | strList <- emacsColorListList ]
+                 _ -> error ("Does not support prsentation method: " ++ show howtopresent)
 
-      in
-  
-      if emacsDisplay
-        then return (map Candidate formattedStrList)
-        else return [] 
+         in
+
+         if emacsDisplay
+           then return (map Candidate formattedStrList)
+           else return [] 
   
   where
     showConcat [] = ""

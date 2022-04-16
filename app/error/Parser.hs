@@ -5,6 +5,8 @@ import CommonParserUtil
 import Token
 import Expr
 
+import ParserTime
+
 import Control.Monad.Trans (lift)
 import qualified Control.Monad.Trans.State.Lazy as ST
 
@@ -70,7 +72,11 @@ parserSpec = ParserSpec
     parserSpecFile = "mygrammar.grm",
     genparserexe   = "yapb-exe",
 
-    synCompSpec = Nothing
+    synCompSpec = Nothing,
+    parserTime = ParserTime {
+                   pa_startTime=startTime,
+                   pa_finishTime=finishTime
+                 }
   }
 
 
