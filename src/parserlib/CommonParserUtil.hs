@@ -955,7 +955,7 @@ _handleParseError
      let strList = nub [ concatStrList strList | strList <- emacsColorListList ] 
      let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
 
-     debug (flag || True) "" $ 
+     debug (flag || True) "Candidates:" $ 
       multiDbg (map (debug (flag || True)) (map show colorListList_symbols)) $ 
 
       debug (flag || True) "" $ 
