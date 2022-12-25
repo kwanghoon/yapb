@@ -1,13 +1,13 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.35.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c133b635fac4f9781f13419abca45b81d467bdf36d792e8884b3a6225a28e571
+-- hash: 5a75606bf54164b0ec65ff2140d206d12e6f0515f43690ced0195352f13bab63
 
 name:           yapb
-version:        0.2.6
+version:        0.2.7
 synopsis:       Yet Another Parser Builder (YAPB)
 description:    A programmable LALR(1) parser builder system. Please see the README on GitHub at <https://github.com/kwanghoon/yapb#readme>
 category:       parser builder
@@ -15,7 +15,7 @@ homepage:       https://github.com/kwanghoon/yapb#readme
 bug-reports:    https://github.com/kwanghoon/yapb/issues
 author:         Kwanghoon Choi
 maintainer:     lazyswamp@gmail.com
-copyright:      2020-2021 Kwanghoon Choi
+copyright:      2020-2022 Kwanghoon Choi
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple

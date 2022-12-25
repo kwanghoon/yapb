@@ -629,7 +629,7 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
 
             let prodrule = prodRules !! n in
 
-            debug flag ("\t" ++ show prodrule) $
+            debug flag ("\t" ++ prProdRule prodrule) $
 
             let builderFun = pFunList  !! n in
             let lhs        = fst prodrule in

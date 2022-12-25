@@ -1,4 +1,4 @@
-Applications using YAPB
+A list of applications to maintain using YAPB 
  - arith
  - smllike
  - polyrpc
