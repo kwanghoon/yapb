@@ -34,10 +34,14 @@ import Control.Monad.Trans.Class
 
 import Data.Typeable
 import Control.Exception
+import ParseError
 
 import SaveProdRules
 import AutomatonType
 import LoadAutomaton
+import AutomatonStack
+import ParserSpec
+import AutomatonUtil
 
 import Data.List (nub)
 import Data.Maybe
@@ -84,128 +88,6 @@ import Text.Printf
 -- |
 -- |  (Syntax completer)   ===> CompCandidates    (for the syntax completer options
 -- |                                               used by compCandidatesFn)
-
-type Line               = Int
-type Column             = Int
-type LexerParserState a = (a, Line, Column, String)    -- Lexer and parser states
-
-type LexerParserMonad m a = ST.StateT (LexerParserState a) m
-
---------------------------------------------------------------------------------
--- | Lexer Specification
---------------------------------------------------------------------------------
-
-type RegExpStr    = String
-type LexAction token m a = String -> LexerParserMonad m a (Maybe token)
-
-type RegexprActionList token m a = [(RegExpStr, LexAction token m a)]
-
-data LexerSpec token m a =
-  LexerSpec
-    { endOfToken    :: token,
-      lexerSpecList :: RegexprActionList token m a }
-
--- | Token precedence and associativity: TokenPrecAssoc token
--- |
--- |    e.g., [ (Nonassoc, [ "integer_number" ])
--- |          , (Left,     [ "+", "-" ])
--- |          , (Left,     [ "*", "/" ])
--- |          , (Right,    [ "UMINUS" ])   -- placeholder
--- |          ]
-
-type TokenPrecAssoc = [(Associativity, [TokenOrPlaceholder])]
-
---------------------------------------------------------------------------------
--- | Parser Specification
--- |     A -> rhs %prec <token> {action}
---------------------------------------------------------------------------------
-
-type ProdRuleStr = String                       -- A -> rhs
-type ParseAction token ast m a =                -- {action}
-  Stack token ast -> LexerParserMonad m a ast
-type ProdRulePrec = Maybe TokenOrPlaceholder    -- %prec <token>
-type ProdRulePrecs = [ProdRulePrec]
-
-type ParserSpecList token ast m a = [(ProdRuleStr, ParseAction token ast m a, ProdRulePrec)]
-
-data ParserSpec token ast m a =
-  ParserSpec { startSymbol    :: String,
-               tokenPrecAssoc :: TokenPrecAssoc,
-               parserSpecList :: ParserSpecList token ast m a,
-               baseDir        :: String,   -- ex) ./
-               actionTblFile  :: String,   -- ex) actiontable.txt
-               gotoTblFile    :: String,   -- ex) gototable.txt
-               grammarFile    :: String,   -- ex) grammar.txt
-               parserSpecFile :: String,   -- ex) mygrammar.grm
-               genparserexe   :: String,   -- ex) genlrparse-exe
-               synCompSpec    :: Maybe SynCompSpec,
-               parserTime     :: ParserTime m a
-             }
-
-data ParserTime m a =
-  ParserTime {
-    pa_startTime  :: ST.StateT (LexerParserState a) m Integer,
-    pa_finishTime :: Integer -> ST.StateT (LexerParserState a) m ()
-  }
-
-data SynCompSpec =
-  SynCompSpec { isAbleToSearch :: String -> Bool   -- terminasls or non-terminals
-              }
---------------------------------------------------------------------------------
--- | Stack
---------------------------------------------------------------------------------
-
-data StkElem token ast =
-    StkState Int
-  | StkTerminal (Terminal token)
-  | StkNonterminal (Maybe ast) String -- String for printing Nonterminal instead of ast
-
-instance TokenInterface token => Eq (StkElem token ast) where
-  (StkState i)          == (StkState j)          = i == j
-  (StkTerminal termi)   == (StkTerminal termj)   =
-     tokenTextFromTerminal termi == tokenTextFromTerminal termj
-  (StkNonterminal _ si) == (StkNonterminal _ sj) = si == sj
-  leftStkElm            == rightStkElm           = False
-
-type Stack token ast = [StkElem token ast]
-
-get :: TokenInterface token => Stack token ast -> Int -> ast
-get stack i =
-  case stack !! (i-1) of
-    StkNonterminal (Just ast) _ -> ast
-    StkNonterminal Nothing _ -> error $ "get: empty ast in the nonterminal at stack"
-    StkState s -> error $ "get: out of bound: " ++ show i ++ " : state " ++ show s
-    StkTerminal terminal -> error $ "get: out of bound: " ++ show i ++ " : terminal " ++ terminalToSymbol terminal
-
-getText :: Stack token ast -> Int -> String
-getText stack i = 
-  case stack !! (i-1) of
-    StkTerminal (Terminal text _ _ _) -> text
-    _ -> error $ "getText: out of bound: " ++ show i
-
-emptyStack = []
-
-push :: a -> [a] -> [a]
-push elem stack = elem:stack
-
-pop :: [a] -> (a, [a])
-pop (elem:stack) = (elem, stack)
-pop []           = error "Attempt to pop from the empty stack"
-
-prStack :: TokenInterface token => Stack token ast -> String
-prStack [] = "STACK END"
-prStack (StkState i : stack) = "S" ++ show i ++ " : " ++ prStack stack
-prStack (StkTerminal (Terminal text _ _ (Just token)) : stack) =
-  let str_token = fromToken token in
-  (if str_token == text then str_token else (fromToken token ++ " i.e. " ++ text))
-    ++  " : " ++ prStack stack
-prStack (StkTerminal (Terminal text _ _ Nothing) : stack) =
-  (token_na ++ " " ++ text) ++  " : " ++ prStack stack
-prStack (StkNonterminal _ str : stack) = str ++ " : " ++ prStack stack
-
--- -- Specification
--- data Spec token ast =
---   Spec (LexerSpec token) (ParserSpec token ast)
 
 --------------------------------------------------------------------------------  
 -- | The lexing machine
@@ -292,10 +174,6 @@ matchLexSpec debugFlag eot lexerspec =
 
          _  -> mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
 
-takeRet n [] = ""
-takeRet 0 ('\n':text) = '\n' : takeRet 0 text
-takeRet n ('\n':text)  = ""
-takeRet n (c:text) = c : (takeRet (n+1) text)
 
 moveLineCol :: Line -> Column -> String -> (Line, Column)
 moveLineCol line col ""          = (line, col)
@@ -374,129 +252,12 @@ _lexingWithLineColumn debugFlag lexerspec state_parm line col text =
      return terminalList
 
 
---------------------------------------------------------------------------------  
--- The parsing machine with parse/lex errors
---------------------------------------------------------------------------------
-
-type CurrentState    = Int
-type StateOnStackTop = Int
-type LhsSymbol = String
-
-type AutomatonSnapshot token ast =   -- TODO: Refactoring
-  (Stack token ast, ActionTable, GotoTable, ProdRules)
-
---
-data ParseError token ast a where
-    -- teminal, state, stack actiontbl, gototbl
-    NotFoundAction ::
-      (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      (Terminal token) -> CurrentState -> (Stack token ast) ->
-      ActionTable -> GotoTable -> ProdRules ->
-      LexerParserState a ->  -- [Terminal token]
-      Maybe [StkElem token ast] ->
-      ParseError token ast a
-    
-    -- topState, lhs, stack, actiontbl, gototbl,
-    NotFoundGoto ::
-      (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
-      StateOnStackTop -> LhsSymbol -> (Stack token ast) ->
-      ActionTable -> GotoTable -> ProdRules ->
-      LexerParserState a -> -- [Terminal token]
-      Maybe [StkElem token ast] ->
-      ParseError token ast a
-
-  deriving (Typeable)
-
-instance (Show token, Show ast) => Show (ParseError token ast a) where
-  showsPrec p (NotFoundAction terminal state stack _ _ _ (_,line,col,text) _ ) =
-    (++) "NotFoundAction: State " .
-    (++) (show state) . (++) " : " .
-    (++) (terminalToString terminal) . (++) " " .    -- (++) (show $ length stack)
-    (++) "Line " . (++) (show line) . (++) " " .
-    (++) "Column " . (++) (show col) . (++) " : " .
-    (++) (takeRet 80 text)
-    
-  showsPrec p (NotFoundGoto topstate lhs stack _ _ _ (_,line,col,text) _) =
-    (++) "NotFoundGoto: State " .
-    (++) (show topstate) . (++) " ; " .
-    (++) lhs . (++) " " .                            -- . (++) (show stack)
-    (++) "Line " . (++) (show line) . (++) " " .
-    (++) "Column " . (++) (show col) . (++) " : " .
-    (++) (takeRet 80 text)
-
-instance (TokenInterface token, Typeable token, Show token, Typeable ast, Show ast, Typeable a)
-  => Exception (ParseError token ast a)
-
-lpStateFrom (NotFoundAction _ _ _ _ _ _ lpstate _) = lpstate
-lpStateFrom (NotFoundGoto   _ _ _ _ _ _ lpstate _) = lpstate
-
---------------------------------------------------------------------------------
--- | Automation specification
---------------------------------------------------------------------------------
-
-data AutomatonSpec token ast m a =
-  AutomatonSpec {
-    am_actionTbl   :: ActionTable,
-    am_gotoTbl     :: GotoTable,
-    am_prodRules   :: ProdRules,
-    am_parseFuns   :: ParseActionList token ast m a,
-    am_initState   :: Int,
-    am_time        :: AutomatonTime m a
-  }
-
-data AutomatonTime m a =
-  AutomatonTime {
-    am_startTime  :: ST.StateT (LexerParserState a) m Integer,
-    am_finishTime :: Integer -> ST.StateT (LexerParserState a) m (),
-    am_cputime    :: Integer
-  }
-
-initState = 0
-
-type ParseActionList token ast m a = [ParseAction token ast m a]
-
-
 --------------------------------------------------------------------------------
 -- | Automaton 
 --------------------------------------------------------------------------------
 
--- Utility for Automation
-currentState :: Stack token ast -> Int
-currentState (StkState i : stack) = i
-currentState _                    = error "No state found in the stack top"
+initState = 0
 
-lookupTable :: (Eq a, Show a) => [(a,b)] -> a -> Maybe b
-lookupTable tbl key =   
-  case [val | (key', val) <- tbl, key==key'] of
-    []    -> Nothing
-    (h:_) -> Just h
-
-lookupActionTable :: TokenInterface token => ActionTable -> Int -> (Terminal token) -> Maybe Action
-lookupActionTable actionTbl state terminal =
-  lookupTable actionTbl (state,tokenTextFromTerminal terminal)
-
-lookupGotoTable :: GotoTable -> Int -> String -> Maybe Int
-lookupGotoTable gotoTbl state nonterminalStr =
-  lookupTable gotoTbl (state,nonterminalStr)
-
-errorKeyword :: String  -- A reserved terminal name : A -> error
-errorKeyword = "error"
-
-lookupActionTableWithError :: ActionTable -> Int -> Maybe Action
-lookupActionTableWithError actionTbl state =
-  case lookupTable actionTbl (state,errorKeyword) of
-    Just action          -> Just action   -- This can be either Shift or Reduce!
-                            
-    Nothing              -> Nothing
-
-
--- Note: take 1th, 3rd, 5th, ... of 2*len elements from stack and reverse it!
--- example) revTakeRhs 2 [a1,a2,a3,a4,a5,a6,...]
---          = [a4, a2]
-revTakeRhs :: Int -> [a] -> [a]
-revTakeRhs 0 stack = []
-revTakeRhs n (_:nt:stack) = revTakeRhs (n-1) stack ++ [nt]
-revTakeRhs n stack = error "[revTakeRhs] something wrong happened"
 
 -- Automaton
 
