@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 54bdfee40d56cc704678098d5119e55048c7686be2820d4a3c576321fd061b65
+-- hash: e483ec9cb71163839e07501fa013811e452928bc370006ae3b91e7e9801907b1
 
 name:           yapb
 version:        0.2.8
@@ -61,11 +61,13 @@ library
       AutomatonUtil
       ParseError
       ParserSpec
+      GenParseActions
       Paths_yapb
   hs-source-dirs:
       src/gentable/
       src/parserlib/
       src/parserlib/algo
+      src/parserlib/analyze
       src/syncomplib
       src/util/
       src/config/

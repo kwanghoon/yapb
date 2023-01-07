@@ -21,45 +21,96 @@ module CommonParserUtil
   )
 where
 
-import Attrs
+import Attrs ( TokenAttrs(..), ProdRuleAttrs(..) )
 import Terminal
-import TokenInterface
+    ( Terminal(..),
+      terminalToString,
+      terminalToLine,
+      terminalToCol,
+      terminalToSymbol,
+      terminalToMaybeToken,
+      tokenTextFromTerminal )
+import TokenInterface ( TokenInterface(..) )
 
-import Text.Regex.TDFA
-import System.Exit
-import System.Process
-import Control.Monad
+import Text.Regex.TDFA ( (=~) )
+import System.Exit ( ExitCode(ExitSuccess, ExitFailure), exitWith )
+import System.Process ( rawSystem )
+import Control.Monad ( Monad(return), when )
 import qualified Control.Monad.Trans.State.Lazy as ST
-import Control.Monad.Trans.Class
 
-import Data.Typeable
-import Control.Exception
-import ParseError
+import Data.Typeable ( Typeable )
+import Control.Exception ( catch, throwIO, Exception, throw )
+import ParseError ( ParseError(..), lpStateFrom )
 
-import SaveProdRules
+import SaveProdRules ( saveProdRules, getHashFileName )
 import AutomatonType
-import LoadAutomaton
+    ( Action(Reduce, Accept, Shift),
+      prProdRule,
+      AutomatonTime(..),
+      AutomatonSpec(..) )
+import LoadAutomaton ( loadAutomaton )
 import AutomatonStack
+    ( Stack,
+      StkElem(..),
+      get,
+      getText,
+      emptyStack,
+      push,
+      pop,
+      prStack )
 import ParserSpec
+    ( SynCompSpec(..),
+      ParserTime(..),
+      ParserSpec(..),
+      ProdRulePrecs,
+      ProdRulePrec,
+      ParseAction,
+      ProdRuleStr,
+      TokenPrecAssoc,
+      LexerSpec(..),
+      RegexprActionList,
+      LexAction,
+      LexerParserMonad,
+      LexerParserState,
+      Column,
+      Line )
 import AutomatonUtil
+    ( currentState,
+      lookupActionTable,
+      lookupGotoTable,
+      errorKeyword,
+      lookupActionTableWithError,
+      revTakeRhs,
+      takeRet )
 
 import Data.List (nub)
-import Data.Maybe
+import Data.Maybe ( Maybe(..), fromJust, isJust, isNothing )
 
 import SynCompAlgoUtil
-import SynCompInterface
+    ( CompCandidates(..),
+      Automaton(Automaton, actTbl, gotoTbl, prodRules),
+      CandidateTree(Leaf),
+      Candidate(..),
+      init_r_level,
+      init_gs_level,
+      initSearchState,
+      debug,
+      multiDbg,
+      prlevel )
+import SynCompInterface ( EmacsDataItem(..) )
 
 import Config
+    ( Configuration(config_DEBUG, config_PRESENTATION, config_COLLECT), readConfig )
 
 import Prelude hiding (catch)
 import Debug.Trace (trace)
-import System.Directory
-import Control.Exception
+import System.Directory ( removeFile )
 import System.IO.Error hiding (catch)
 
 import System.TimeIt (timeItT)
 import Control.Monad.IO.Class(MonadIO(liftIO))
-import Text.Printf
+import Text.Printf ( printf )
+import GenParseActions (runYapbAutomatonWithLog)
 
 -- | Common parser utilities:
 -- |
@@ -137,7 +188,7 @@ matchLexSpec debugFlag eot lexerspec =
           Bool
           -> token
           -> RegexprActionList token m a
-          -> (LexerParserState a)
+          -> LexerParserState a
           -> ST.StateT (LexerParserState a) m (MatchedToken token)
      mlsSub debugFlag eot lexerspec (state_parm, line, col, []) =
        do ST.put (state_parm, line+1, 1, [])                  -- EOT at (line+1,1)?
@@ -157,15 +208,12 @@ matchLexSpec debugFlag eot lexerspec =
                 else
                   do maybeTok <- tokenBuilder matched
 
-                     let str_maybeTok =
-                           if isNothing maybeTok
-                           then "Nothing"
-                           else (fromToken (fromJust maybeTok))
+                     let str_maybeTok = maybe "Nothing" fromToken maybeTok
 
                      (state_parm_, _, _, _) <- ST.get
                      ST.put (state_parm_, line_, col_, post)
 
-                     debug debugFlag "" $ 
+                     debug debugFlag "" $
 
                       debug debugFlag ("Lexer: - " ++ show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
                        debug debugFlag ("       - returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
@@ -187,7 +235,7 @@ repMatchLexSpec :: (Monad m, TokenInterface token) =>
   LexerParserMonad m a [Terminal token]
 repMatchLexSpec debugFlag eot lexerspec  =
   repMLS debugFlag eot lexerspec []
-  
+
   where
     repMLS debugFlag eot lexerspec terminalList =
       do (_, line, col, _) <- ST.get
@@ -211,21 +259,21 @@ type BoolToLexer m a token = Bool -> LexerParserMonad m a (Terminal token)
 
 aLexer
   :: (Monad m, TokenInterface token) =>
-     LexerSpec token m a -> 
+     LexerSpec token m a ->
      Bool -> LexerParserMonad m a (Terminal token)
 aLexer lexerSpec =
   let eot = endOfToken lexerSpec
       regexprActionList = lexerSpecList lexerSpec
 
-      boolToLexer flag = 
+      boolToLexer flag =
         do (_, line, col, _) <- ST.get
 
            (matchedText, maybeTok, _) <- matchLexSpec flag eot regexprActionList
 
            case maybeTok of
-             Nothing  -> boolToLexer flag 
+             Nothing  -> boolToLexer flag
              Just tok -> return (Terminal matchedText line col maybeTok)
-             
+
   in boolToLexer
 
 -- | Lexing only intefaces
@@ -237,19 +285,16 @@ lexing lexerspec state_parm text = do
 
 lexingWithLineColumn :: (Monad m, TokenInterface token) =>
   LexerSpec token m a -> a -> Line -> Column -> String -> m [Terminal token]
-lexingWithLineColumn lexerspec state_parm line col text =
-  _lexingWithLineColumn False lexerspec state_parm line col text
+lexingWithLineColumn = _lexingWithLineColumn False
 
 
 _lexingWithLineColumn :: (Monad m, TokenInterface token) =>
   Bool -> LexerSpec token m a -> a -> Line -> Column -> String -> m [Terminal token]
 _lexingWithLineColumn debugFlag lexerspec state_parm line col text =
-  do terminalList  <-
-       ST.evalStateT
-         (repMatchLexSpec debugFlag (endOfToken lexerspec) (lexerSpecList lexerspec))
-           (state_parm, line, col, text)
-
-     return terminalList
+  do
+  ST.evalStateT
+      (repMatchLexSpec debugFlag (endOfToken lexerspec) (lexerSpecList lexerspec))
+        (state_parm, line, col, text)
 
 
 --------------------------------------------------------------------------------
@@ -269,17 +314,24 @@ runAutomaton
      LexerParserState a -> BoolToLexer IO a token -> IO ast
 runAutomaton flag amSpec init_lp_state lexer =
   do maybeConfig <- readConfig
-  
-     flag <- case maybeConfig of
-               Nothing -> return flag
-               Just config -> return $ config_DEBUG config
 
-     ST.evalStateT runYA init_lp_state
+     flag <- case maybeConfig of                -- ToDo: This is a dead code! 
+              Nothing -> return flag
+              Just config -> return $ config_DEBUG config
+
+     collectFlag <- case maybeConfig of
+                        Nothing -> return False
+                        Just config -> return $ config_COLLECT config
+
+     ST.evalStateT (runYA collectFlag) init_lp_state
      where
-       runYA =
+       runYA collectFlag =
          do start_cputime <- am_startTime (am_time amSpec)
-            runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
-  
+            if not collectFlag
+            then runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
+            else do runYapbAutomatonWithLog flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
+                    runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)  -- ToDo: always parse error!!
+
 runYapbAutomaton
   :: (Monad m,
       TokenInterface token,
@@ -287,27 +339,27 @@ runYapbAutomaton
       Show token, Show ast) =>
   -- debug flag
   Bool ->
-  
+
   -- static part ActionTable,GotoTable,ProdRules,ParseActionList token ast ->
   AutomatonSpec token ast m a ->
-  
+
   -- dynamic part
   ST.StateT (LexerParserState a) m (Terminal token) ->
-  
+
   -- AST
   ST.StateT (LexerParserState a) m ast
-  
-runYapbAutomaton flag (am_spec@(AutomatonSpec {
+
+runYapbAutomaton flag am_spec@AutomatonSpec {
       am_initState=initState,
       am_actionTbl=actionTbl,
       am_gotoTbl=gotoTbl,
       am_prodRules=prodRules,
       am_parseFuns=pFunList
-   })) nextTerminal =
+   } nextTerminal =
 
       do let initStack = push (StkState initState) emptyStack
          run Nothing initStack Nothing
-  
+
   where
     {- run :: TokenInterface token => [Terminal token] -> Stack token ast -> IO ast -}
     run maybeTerminal stack _maybeStatus = do
@@ -316,14 +368,11 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
 
       -- Save the current state in case of going back
       prevState <- ST.get
-      
-      terminal <-
-        case maybeTerminal of
-          Nothing -> nextTerminal
-          Just t  -> return t      -- Use a terminal multiple times
-                                   -- when reducing multiple production rules
 
-      maybeStatus <- 
+      terminal <- maybe nextTerminal return maybeTerminal      -- Use a terminal multiple times
+                                                               -- when reducing multiple production rules
+
+      maybeStatus <-
             -- if isNothing _maybeStatus && length terminalList == 1   -- if terminal == "$"
             if isNothing _maybeStatus
                && isJust (terminalToMaybeToken terminal)
@@ -332,31 +381,31 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
                  debug flag ("Saving: " ++ prStack stack) $
                  do return (Just stack)
             else do return _maybeStatus
-            
+
       case lookupActionTable actionTbl state terminal of
         Just action -> do
           -- putStrLn $ terminalToString terminal {- debug -}
           runAction state terminal action stack maybeStatus
 
-        Nothing -> 
+        Nothing ->
           debug flag ("lookActionTable failed (1st) with: " ++ show (terminalToString terminal)) $
-          
+
           case lookupActionTableWithError actionTbl state of
             Just action -> do
               -- errorTerminal intended to share the same (line,col) as terminal
               let (_, line, col, _) = prevState
               let errorTerminal     = Terminal errorKeyword line col Nothing
-              
+
               -- Restore the current state
               ST.put prevState
-              
+
               -- run this action (Shift toState)
               runAction state errorTerminal action stack maybeStatus
 
             Nothing ->
               -- No more way to proceed now!
               do lp_state <- ST.get
-                 (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
+                 am_finishTime (am_time am_spec) (am_cputime (am_time am_spec))
                  throw (NotFoundAction terminal state stack actionTbl gotoTbl prodRules lp_state maybeStatus)
 
     -- separated to support the haskell layout rule
@@ -364,19 +413,19 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
       debug flag ("\nState " ++ show state) $
       debug flag ("Token " ++ tokenTextFromTerminal terminal) $
       debug flag ("Stack " ++ prStack stack) $
-      
+
       case action of
-        Accept -> 
+        Accept ->
           debug flag "Accept" $
           debug flag (terminalToString terminal) $ {- debug -}
-          
+
           case stack !! 1 of
             StkNonterminal (Just ast) _ ->
-              do (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
+              do am_finishTime (am_time am_spec) (am_cputime (am_time am_spec))
                  return ast
             StkNonterminal Nothing _ -> error "Empty ast in the stack nonterminal"
             _ -> error "Not Stknontermianl on Accept"
-        
+
         Shift toState ->
             debug flag ("Shift " ++ show toState) $
             debug flag (terminalToString terminal) $ {- debug -}
@@ -384,7 +433,7 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
             let stack1 = push (StkTerminal terminal) stack in
             let stack2 = push (StkState toState) stack1 in
             do run Nothing stack2 maybeStatus  -- Nothing means consuming the terminal!
-          
+
         Reduce n ->
             debug flag ("Reduce " ++ show n) $
 
@@ -396,20 +445,20 @@ runYapbAutomaton flag (am_spec@(AutomatonSpec {
             let lhs        = fst prodrule in
             let rhsLength  = length (snd prodrule) in
             let rhsAst = revTakeRhs rhsLength stack in
-            do ast <- builderFun rhsAst 
+            do ast <- builderFun rhsAst
                let stack1 = drop (rhsLength*2) stack
                let topState = currentState stack1
-              
+
                toState <-
                     case lookupGotoTable gotoTbl topState lhs of
                       Just state -> return state
                       Nothing -> do lp_state <- ST.get
-                                    (am_finishTime (am_time am_spec)) (am_cputime (am_time am_spec))
+                                    am_finishTime (am_time am_spec) (am_cputime (am_time am_spec))
                                     throw (NotFoundGoto topState lhs stack
                                              actionTbl gotoTbl prodRules
                                                lp_state maybeStatus)
 
-               let stack2 = push (StkNonterminal (Just ast) lhs) stack1 
+               let stack2 = push (StkNonterminal (Just ast) lhs) stack1
                let stack3 = push (StkState toState) stack2
                run (Just terminal) stack3 maybeStatus -- Use the terminal again the next time!
 
@@ -447,7 +496,7 @@ parsing flag parserSpec init_lp_state lexer eot = do
             putStrLn $ "Delete " ++ hashFile
             removeIfExists hashFile
             error $ "Error: Empty automation: please rerun"
-    else do ast <- runAutomaton flag
+    else do runAutomaton flag
                      (AutomatonSpec {
                        am_initState=initState,
                        am_actionTbl=actionTbl,
@@ -461,15 +510,13 @@ parsing flag parserSpec init_lp_state lexer eot = do
                            }
                        })
                      init_lp_state lexer
-            -- putStrLn "done." -- for the interafce with Java-version RPC calculus interpreter.
-            return ast
 
   where
     specFileName      = parserSpecFile parserSpec  -- e.g., mygrammar.grm
     grammarFileName   = grammarFile    parserSpec  --       prod_rules.txt
     actionTblFileName = actionTblFile  parserSpec  --       action_table.txt
     gotoTblFileName   = gotoTblFile    parserSpec  --       goto_table.txt 
-    
+
     sSym          = startSymbol parserSpec
     tokenAttrList = tokenPrecAssoc parserSpec
 
@@ -477,7 +524,7 @@ parsing flag parserSpec init_lp_state lexer eot = do
     tokenAttrsStr = show tokenAttrs
 
     synCompSpecMaybe = synCompSpec parserSpec
-    
+
     pSpecList = map (\(f,s,t)->f) (parserSpecList parserSpec)
     pFunList  = map (\(f,s,t)->s) (parserSpecList parserSpec)
     pPrecList = map (\(f,s,t)->t) (parserSpecList parserSpec)
@@ -512,12 +559,12 @@ toProdRuleAttrs :: TokenAttrs -> ProdRulePrecs -> ProdRuleAttrs
 toProdRuleAttrs tokenAttrs prodRulePrecs = ProdRuleAttrs (toProdRuleAttrs' prodRulePrecs 0)
   where
     TokenAttrs tokenAttrs' = tokenAttrs
-    
+
     toProdRuleAttrs' [] n = []
-    
+
     toProdRuleAttrs' (Nothing:prodRulePrecs) n =
       toProdRuleAttrs' prodRulePrecs (n+1)
-      
+
     toProdRuleAttrs' ((Just tokenOrPlaceholder):prodRulePrecs) n =
       case [ (assoc, prec)
            | (tokenOrPlaceholder', (assoc, prec)) <- tokenAttrs'
@@ -541,38 +588,38 @@ removeIfExists fileName = removeFile fileName `catch` handleExists
 toChildren []                          = []
 toChildren (StkState i:stk)            = toChildren stk
 toChildren (StkTerminal term:stk)      =
-  (Leaf (TerminalSymbol (terminalToSymbol term))) : toChildren stk
+  Leaf (TerminalSymbol (terminalToSymbol term)) : toChildren stk
 toChildren (StkNonterminal ast nt:stk) =
-  (Leaf (NonterminalSymbol nt)) : toChildren stk
+  Leaf (NonterminalSymbol nt) : toChildren stk
 
 
 -- --
 isReducible :: TokenInterface token =>
  [(a, [String])] -> Int -> [StkElem token ast] -> Bool
 isReducible productionRules prnum stk =
-  let 
+  let
       prodrule   = productionRules !! prnum
       rhs = snd prodrule
-      
+
       rhsLength = length rhs
-      
+
       prefix_stk = take (rhsLength*2) stk
       reducible =
         isMatched rhs
-          (reverse [elem | (i,elem) <- zip [1..] prefix_stk, i `mod` 2 == 0])
+          (reverse [elem | (i,elem) <- zip [1..] prefix_stk, even i])
   in
     reducible
-  
+
 isMatched :: TokenInterface token => [String] -> [StkElem token ast] -> Bool
 isMatched [] [] = True
-isMatched (s:rhs) (StkTerminal terminal:stk) =  
+isMatched (s:rhs) (StkTerminal terminal:stk) =
   let maybeToken = terminalToMaybeToken terminal in
     (  isJust maybeToken && s == fromToken (fromJust maybeToken) -- Todo: A bit hard-coded!!
     || isNothing maybeToken && s == terminalToSymbol terminal)
     && isMatched rhs stk
 isMatched (s:rhs) (StkNonterminal _ nonterminal:stk) =
   s == nonterminal && isMatched rhs stk
-isMatched _ _ = False  
+isMatched _ _ = False
 
 -- | Cycle checking
 noCycleCheck :: Bool
@@ -580,11 +627,11 @@ noCycleCheck = True
 
 checkCycle debugflag flag level state stk action history cont =
   if flag && (state,stk,action) `elem` history
-  then 
-    debug debugflag (prlevel level ++ "CYCLE is detected !!") $ 
-    debug debugflag (prlevel level ++ " - " ++ show state ++ " " ++ action) $ 
-    debug debugflag (prlevel level ++ " - " ++ prStack stk) $ 
-    debug debugflag "" $ 
+  then
+    debug debugflag (prlevel level ++ "CYCLE is detected !!") $
+    debug debugflag (prlevel level ++ " - " ++ show state ++ " " ++ action) $
+    debug debugflag (prlevel level ++ " - " ++ prStack stk) $
+    debug debugflag "" $
     return []
   else cont ( (state,stk,action) : history )
 
@@ -620,7 +667,7 @@ defaultHandleParseError lexerSpec parserSpec =
   }
 
 -- | handleParseError
-  
+
 handleParseError :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
   (  CompCandidates token ast
      -> Int
@@ -631,7 +678,7 @@ handleParseError :: (TokenInterface token, Typeable token, Typeable ast, Show to
   HandleParseError token -> ParseError token ast a -> IO [EmacsDataItem]
 handleParseError compCandidatesFn hpeOption parseError =
   do maybeConfig <- readConfig
-  
+
      let hpeOption' =
            case maybeConfig of
              Nothing     -> hpeOption
@@ -644,7 +691,7 @@ handleParseError compCandidatesFn hpeOption parseError =
 unwrapParseError compCandidatesFn hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
     let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
     arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
-    
+
 unwrapParseError compCandidatesFn hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
     let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
     arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
@@ -653,47 +700,47 @@ unwrapParseError compCandidatesFn hpeOption (NotFoundGoto state _ stk _actTbl _g
 arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state@(_,_,_,"") maybeStatus =  -- [$]
   case maybeStatus of
     Nothing ->
-      debug (debugFlag hpeOption) "No saved stack" $ 
+      debug (debugFlag hpeOption) "No saved stack" $
       _handleParseError compCandidatesFn hpeOption state stk automaton
     Just savedStk ->
       let savedStk = fromJust maybeStatus
           savedState = currentState savedStk
-      in 
-        debug (debugFlag hpeOption) "Restored stack" $ 
-        debug (debugFlag hpeOption) (" - state: " ++ show savedState) $ 
-        debug (debugFlag hpeOption) (" - stack: " ++ prStack savedStk) $ 
+      in
+        debug (debugFlag hpeOption) "Restored stack" $
+        debug (debugFlag hpeOption) (" - state: " ++ show savedState) $
+        debug (debugFlag hpeOption) (" - stack: " ++ prStack savedStk) $
         _handleParseError compCandidatesFn hpeOption savedState savedStk automaton
-              
+
 arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state@(_,_,_,text) maybeStatus =
      -- debug (debugFlag hpeOption) $ "length terminalList /= 1 : " ++ show (length terminalList)
      -- debug (debugFlag hpeOption) $ map (\t -> terminalToString $ t) terminalList
      return [SynCompInterface.ParseError text]
 
 _handleParseError
-  compCandidatesFn 
-  (hpeOption@(HandleParseError {
+  compCandidatesFn
+  hpeOption@HandleParseError {
       debugFlag=flag,
       searchMaxLevel=maxLevel,
       simpleOrNested=isSimple,
       postTerminalList=terminalListAfterCursor,
       nonterminalToStringMaybe=_nonterminalToStringMaybe,
       presentation=howtopresent,
-      hpe_synCompSpec=synCompSpecMaybe}))
-  state stk automaton = 
+      hpe_synCompSpec=synCompSpecMaybe}
+  state stk automaton =
   let ccOption =
         CompCandidates
         {
           cc_debugFlag=flag,
           cc_printLevel=0,
           cc_maxLevel=maxLevel,
-          
-          cc_r_level = init_r_level,  
+
+          cc_r_level = init_r_level,
           cc_gs_level = init_gs_level,
-          
+
           cc_simpleOrNested=isSimple,
           cc_automaton=automaton,
           cc_searchState = initSearchState init_r_level init_gs_level,
-          
+
           cc_isAbleToSearch =
             case synCompSpecMaybe of
               Nothing -> (\sym -> True)                      -- Every symbol
@@ -702,27 +749,27 @@ _handleParseError
   in
   let convFun =
         case _nonterminalToStringMaybe of
-          Nothing -> \s -> "..."
+          Nothing -> const "..."
           Just fn -> fn
   in
   do (candidateListList, emacsDisplay) <- timeItShow (compCandidatesFn ccOption 0 [] state stk)
      let colorListList_symbols =
           [ filterCandidates candidateList terminalListAfterCursor
           | candidateList <- candidateListList ]
-          
-     let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols 
-     let colorListList = map collapseCandidates colorListList_ 
-     let emacsColorListList  = map (map showEmacsColor) colorListList 
-     let strList = nub [ concatStrList strList | strList <- emacsColorListList ] 
-     let rawStrListList = nub [ strList | strList <- map (map showRawEmacsColor) colorListList ]
 
-     debug (flag || True) "Candidates:" $ 
-      multiDbg (map (debug (flag || True)) (map show colorListList_symbols)) $ 
+     let colorListList_ = map (stringfyCandidates convFun) colorListList_symbols
+     let colorListList = map collapseCandidates colorListList_
+     let emacsColorListList  = map (map showEmacsColor) colorListList
+     let strList = nub [ concatStrList strList | strList <- emacsColorListList ]
+     let rawStrListList = nub (map (map showRawEmacsColor) colorListList)
 
-      debug (flag || True) "" $ 
-       multiDbg (map (debug (flag || True)) (map show rawStrListList)) $ 
+     debug (flag || True) "Candidates:" $
+      multiDbg (map (debug (flag || True)) (map show colorListList_symbols)) $
 
-        debug (flag || True) "" $ 
+      debug (flag || True) "" $
+       multiDbg (map (debug (flag || True)) (map show rawStrListList)) $
+
+        debug (flag || True) "" $
 
      -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) colorListList_symbols
      -- debug (flag || True) $ showConcat $ map (\x -> (show x ++ "\n")) rawStrListList -- mapM_ (putStrLn . show) rawStrListList
@@ -737,8 +784,8 @@ _handleParseError
 
          if emacsDisplay
            then return (map Candidate formattedStrList)
-           else return [] 
-  
+           else return []
+
   where
     showConcat [] = ""
     showConcat (s:ss) = s ++ " " ++ showConcat ss
@@ -746,7 +793,7 @@ _handleParseError
 --
 -- multiDbg [] = \x -> x
 -- multiDbg (f:fs) = f . multiDbg fs
-    
+
 -- | Filter the given candidates with the following texts
 data EmacsColor =
     Gray  String Line Column -- Overlapping with some in the following text
@@ -790,7 +837,7 @@ collapseCandidates [a] = [a]
 collapseCandidates ((Gray "..." l1 c1) : (Gray "..." l2 c2) : cs) =
   collapseCandidates ((Gray "..." l2 c2) : cs)
 collapseCandidates ((White "...") : (White "...") : cs) =
-  collapseCandidates ((White "...") : cs)    
+  collapseCandidates ((White "...") : cs)
 collapseCandidates (a:b:cs) = a : collapseCandidates (b:cs)
 
 -- | Utilities
@@ -832,4 +879,4 @@ timeItShow ioa =
   do (t,a) <- timeItT ioa
      liftIO $ printf ("Time: %6.2f\n") t
      return a
-     
+

@@ -35,6 +35,7 @@ library:
    - src/gentable/
    - src/parserlib/
    - src/parserlib/algo
+   - src/parserlib/analyze
    - src/syncomplib
    - src/util/
    - src/config/

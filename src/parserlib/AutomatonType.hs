@@ -1,9 +1,6 @@
 module AutomatonType where
 
-import TokenInterface
-import Terminal
-import AutomatonStack
-import ParserSpec
+import ParserSpec ( ParseAction, LexerParserState )
 import qualified Control.Monad.Trans.State.Lazy as ST
 
 --------------------------------------------------------------------------------
