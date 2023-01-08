@@ -30,40 +30,23 @@ import AutomatonUtil
       revTakeRhs )
 import SynCompAlgoUtil ( debug )
 import ParseError ( ParseError(NotFoundGoto, NotFoundAction) )
+import ActionLogType 
+import AnalyzeActions ( analyzeActions )
 
 import Data.Maybe ( fromJust, isJust, isNothing )
 import Control.Exception ( throw )
 import System.IO
 import Control.Monad.Cont (MonadIO(liftIO))
 
--- | Action logs
-
-type State = Int 
-type ProdRuleNumber = Int 
-type Nonterminal = String 
-type ProdRuleText = String 
-
-data ActionLog token = 
-    LogShift State (Terminal token) 
-  | LogReduce ProdRuleNumber ProdRuleText
-  | LogGoto State Nonterminal
-  | LogAccept
-
-type ActionLogs token = [ ActionLog token ]
-
 saveParserActions :: TokenInterface token => ActionLogs token -> ST.StateT (LexerParserState a) IO ()
 saveParserActions logs =
   do h <- liftIO $ openFile "./action_logs" WriteMode
      liftIO $ save h logs
      liftIO $ hClose h
+     liftIO $ analyzeActions logs
   where
     save h [] = return ()
-    save h (action : logs) = do save' h action ; save h logs
-
-    save' h (LogShift i t) = hPutStrLn h $ "Shift " ++ show i ++ " " ++ terminalToTokenSymbol t
-    save' h (LogReduce i p) = hPutStrLn h $ "Reduce " ++ show i ++ " " ++ p
-    save' h (LogGoto i nt) = hPutStrLn h $ "Goto " ++ show i ++ " " ++ nt
-    save' h LogAccept = hPutStrLn h "Accept"
+    save h (action : logs) = do hPutStrLn h (showActionLog action) ; save h logs
 
 -- 
 runYapbAutomatonWithLog
@@ -197,4 +180,4 @@ runYapbAutomatonWithLog flag am_spec@AutomatonSpec {
                let stack2 = push (StkNonterminal (Just ast) lhs) stack1
                let stack3 = push (StkState toState) stack2
                logs <- run (Just terminal) stack3 maybeStatus -- Use the terminal again the next time!
-               return $ LogReduce n prodruleText : LogGoto toState lhs : logs
+               return $ LogReduce n prodruleText rhsLength : LogGoto toState lhs : logs

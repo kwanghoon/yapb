@@ -877,6 +877,6 @@ concatStrList (str:strs) = str ++ " " ++ concatStrList strs
 timeItShow :: (MonadIO m, Show a) => m a -> m a
 timeItShow ioa =
   do (t,a) <- timeItT ioa
-     liftIO $ printf ("Time: %6.2f\n") t
+     liftIO $ printf "Time: %6.2f\n" t
      return a
 

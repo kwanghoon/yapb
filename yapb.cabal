@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e483ec9cb71163839e07501fa013811e452928bc370006ae3b91e7e9801907b1
+-- hash: cce89844540b68bc3de29ac6859cbd2bc5fe5d689d5fb8c8a2e23270eee87488
 
 name:           yapb
 version:        0.2.8
@@ -61,6 +61,8 @@ library
       AutomatonUtil
       ParseError
       ParserSpec
+      ActionLogType
+      AnalyzeActions
       GenParseActions
       Paths_yapb
   hs-source-dirs:
@@ -74,6 +76,7 @@ library
   build-depends:
       base >=4.7 && <5
     , bytestring >=0.10.8 && <0.11
+    , containers
     , deepseq >=1.4.4.0
     , directory >=1.3.3 && <1.4
     , hashable >=1.3.0 && <1.4
@@ -102,6 +105,7 @@ executable ambiguous-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -120,6 +124,7 @@ executable conv-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -144,6 +149,7 @@ executable error-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -169,6 +175,7 @@ executable parser-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -194,6 +201,7 @@ executable syncomp-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -212,6 +220,7 @@ executable yapb-exe
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl
@@ -230,6 +239,7 @@ test-suite yapb-test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base >=4.7 && <5
+    , containers
     , deepseq >=1.4.4.0
     , hspec
     , mtl

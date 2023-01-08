@@ -7,7 +7,7 @@ import Debug.Trace (trace)
 data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate String 
     TerminalSymbol !String
   | NonterminalSymbol !String
-  deriving Eq
+  deriving (Eq, Ord)
 
 -- | Candidate tree
 
@@ -24,7 +24,7 @@ data Candidate = -- data Candidate vs. data EmacsDataItem = ... | Candidate Stri
 data CandidateTree =
     Leaf !Candidate 
   | Node !Candidate ![CandidateTree]
-  deriving (Eq,Show)
+  deriving (Eq,Show,Ord)
 
 type CandidateForest = [CandidateTree]
 

@@ -26,6 +26,7 @@ dependencies:
 - mtl
 - deepseq >= 1.4.4.0
 - timeit >= 2.0
+- containers
 
 # --------------------------------------------------
 # -- Main library: YAPB (Yet Another Parser Builder)
