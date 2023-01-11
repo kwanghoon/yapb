@@ -8,11 +8,36 @@ import Control.Monad.RWS (MonadState(state))
 import Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.Bifunctor
+import Test.Hspec (xcontext)
 
 analyzeActions :: TokenInterface token => ActionLogs token -> IO ()
 analyzeActions logs =
     let map = collect logs in
-        mapM_ (print . Data.Bifunctor.second Map.toList) (Map.toList map)
+        printResult map
+
+
+printNoLn :: Show a => a -> IO ()
+printNoLn = putStr . show
+
+printResult :: Map.Map State (Map.Map CandidateForest Integer) -> IO ()
+printResult map =   -- [ (State, [ (CandidateForest, Integer) ] ) ]
+    mapM_ pr [ (state, candForestCount)
+                | (state, candForestCountMap) <- Map.toList map,
+                  candForestCount <- Map.toList candForestCountMap ]
+    where
+        pr (state, (candForest, count)) = -- state candidate count
+            do printNoLn state
+               putStr " "
+               putStr (concatMap (prSymbolWithSp . unleaf) candForest)
+               -- putStr " "
+               printNoLn count
+               putStrLn ""
+
+        unleaf (Leaf x) = x
+        unleaf _ = error "unleaf: expected Leaf"
+
+        prSymbolWithSp sym = show sym ++ " "
+
 
 collect :: TokenInterface token => ActionLogs token -> Map.Map State ( Map.Map CandidateForest Integer )
 collect logs =
@@ -32,7 +57,7 @@ onLogs state logs map =
 
         foundMap = Map.fromList [ (candidate,1) ]
 
-        f newMap oldMap = 
+        f newMap oldMap =
           let (v,c) = head (Map.toList newMap) in
             Map.insertWith g v c oldMap
         g nc oc = oc + nc
