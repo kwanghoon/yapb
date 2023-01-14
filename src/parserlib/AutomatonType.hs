@@ -7,6 +7,8 @@ import qualified Control.Monad.Trans.State.Lazy as ST
 -- | Parser
 --------------------------------------------------------------------------------
 
+type AutomatonState = Int --
+
 data Action = Shift Int | Reduce Int | Accept deriving (Eq, Show)
 
 type ActionTable = [((Int, String), Action)] -- key: (Int,String), value: Action

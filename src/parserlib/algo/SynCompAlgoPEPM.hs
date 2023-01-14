@@ -191,3 +191,16 @@ compGammasDfsForReduce ccOption level symbols state stk history prnum =
     else do listOfList <- compGammasDfs ccOption (level+1) [] toState stk3 history
             return (if null symbols then listOfList else (symbols : map (symbols ++) listOfList))
             
+-- | Cycle checking
+noCycleCheck :: Bool
+noCycleCheck = True
+
+checkCycle debugflag flag level state stk action history cont =
+  if flag && (state,stk,action) `elem` history
+  then
+    debug debugflag (prlevel level ++ "CYCLE is detected !!") $
+    debug debugflag (prlevel level ++ " - " ++ show state ++ " " ++ action) $
+    debug debugflag (prlevel level ++ " - " ++ prStack stk) $
+    debug debugflag "" $
+    return []
+  else cont ( (state,stk,action) : history )

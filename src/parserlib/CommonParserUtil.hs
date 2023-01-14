@@ -6,13 +6,12 @@ module CommonParserUtil
   , Stack, StkElem(..), push, pop, prStack
   , currentState, lookupGotoTable, lookupActionTable, lookupActionTableWithError
   , isReducible
-  , toChildren
-  , checkCycle  -- SynCompAlgoPEPM only
+  {-, toChildren -}
   , HandleParseError(..), defaultHandleParseError
-  , matchLexSpec, LexAction, aLexer
-  , lexing, lexingWithLineColumn, _lexingWithLineColumn
+  , {- matchLexSpec, -} LexAction, aLexer
+  , lexing {- , lexingWithLineColumn, _lexingWithLineColumn -}
   , parsing
-  , initState, runAutomaton
+  {- , initState, runAutomaton -}
   , get, getText
   , LexError(..), ParseError(..), lpStateFrom
   , successfullyParsed, handleLexError, handleParseError
@@ -621,20 +620,6 @@ isMatched (s:rhs) (StkNonterminal _ nonterminal:stk) =
   s == nonterminal && isMatched rhs stk
 isMatched _ _ = False
 
--- | Cycle checking
-noCycleCheck :: Bool
-noCycleCheck = True
-
-checkCycle debugflag flag level state stk action history cont =
-  if flag && (state,stk,action) `elem` history
-  then
-    debug debugflag (prlevel level ++ "CYCLE is detected !!") $
-    debug debugflag (prlevel level ++ " - " ++ show state ++ " " ++ action) $
-    debug debugflag (prlevel level ++ " - " ++ prStack stk) $
-    debug debugflag "" $
-    return []
-  else cont ( (state,stk,action) : history )
-
 -- | Parsing programming interfaces
 
 -- | successfullyParsed
@@ -879,4 +864,3 @@ timeItShow ioa =
   do (t,a) <- timeItT ioa
      liftIO $ printf "Time: %6.2f\n" t
      return a
-

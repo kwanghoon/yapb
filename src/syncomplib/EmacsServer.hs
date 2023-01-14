@@ -1,12 +1,24 @@
 module EmacsServer where
 
-import SynCompInterface
+import SynCompInterface ( EmacsDataItem(..) )
   
-import Network.Socket hiding (recv,send)
-import Network.Socket.ByteString
-import Data.ByteString.Char8
-import Control.Monad
-import Control.Exception
+import Network.Socket
+    ( Socket,
+      setSocketOption,
+      accept,
+      bind,
+      listen,
+      socket,
+      close,
+      defaultProtocol,
+      SocketOption(ReuseAddr),
+      Family(AF_INET),
+      SockAddr(SockAddrInet),
+      SocketType(Stream) )
+import Network.Socket.ByteString ( recv, send )
+import Data.ByteString.Char8 ( length, pack, unpack )
+import Control.Monad ( forever )
+import Control.Exception ( finally )
 
 type ComputeCandidate = String -> String -> Bool -> {- Int -> -} IO [EmacsDataItem]
 
@@ -65,6 +77,7 @@ sendCandidateList conn xs = do
       f (LexError : xs)           = "LexError" ++ f xs
       f ((ParseError _) : xs)     = "ParseError" ++ f xs
       f (SuccessfullyParsed : xs) = "SuccessfullyParsed" ++ f xs
+      f ((ParsingStateAtTabPosition state) : xs) = "State " ++ show state ++ f xs
     let
       s = f xs
     do
