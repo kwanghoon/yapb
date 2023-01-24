@@ -32,6 +32,9 @@ import qualified Data.Functor as True
 -- config_COLLECT ::= True | False
 --       collects candidates and frequencies from sample complete source programs
 --
+-- config_TABSTATE ::= True | False
+--       return the current state at hitting tab key when True
+--
 -- Usages: 
 --    1) For parsing mode, config_COLLECT = False. The other configurations are ignored.
 --    2) For sampling mode, config_COLLECT = True. The other configurations are ignored.
@@ -55,7 +58,8 @@ import qualified Data.Functor as True
 --   config_DISPLAY  = False,
 --   config_PRESENTATION = 0,
 --   config_ALGORITHM = 3,
---   config_COLLECT = False
+--   config_COLLECT = False,
+--   config_TABSTATE = False
 -- }
 --
 
