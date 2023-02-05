@@ -19,6 +19,7 @@
   - Microsoft SmallBasic parser: https://github.com/kwanghoon/sbparser
   - Polyrmorphic RPC calculus parser: https://github.com/kwanghoon/polyrpc
   - C11 parser: https://github.com/kwanghoon/c11parser
+  - Haskell parser with a GHC lexer and a tweaked GHC parser libraries: https://github.com/kwanghoon/haskellparser
   - EOPL interpreters: https://github.com/kwanghoon/Lecture_EOPL_Exercise (Its solution Lecture_EOPL also available in private)
 
 ### Download, build, and test
