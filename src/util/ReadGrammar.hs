@@ -1,10 +1,21 @@
-module ReadGrammar(readGrammar, conversion) where
+module ReadGrammar(readGrammar, conversion, readCFG) where
 
 import CFG
+import Attrs
 import Data.List(intersperse)
 
 import System.IO
 
+-- | Read grammar from mygrammar.grm
+
+readCFG :: String -> IO CFG
+readCFG file =
+  do text <- readFile file
+     let (cfg, _, _, _) = read text :: (CFG,TokenAttrs,ProdRuleAttrs,String)
+     return cfg
+
+
+-- | Read literate grammars
 
 data LitGrm = LitGrm { start :: Maybe String, rules :: [(String, [[String]])], rhss :: [[String]] }
 

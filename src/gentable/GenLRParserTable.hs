@@ -7,6 +7,7 @@
 --  $ ghci GenLRParserTable
 --  *Main> prParseTable (calcLR1ParseTable g1)
 --  *Main> prLALRParseTable (calcLALRParseTable g1)
+--  *Main> prItemsFrom g1
 --
 --  * let (items,_,lkhtbl,gotos) = calcLR0ParseTable g1 
 --    in do { prItems items; prGtTbl gotos; prLkhTable lkhtbl }
@@ -28,15 +29,29 @@ import CmdArgs
 
 import System.IO
 
-{-
+----------------------------------------------------------------------------------------------------
+-- | [Usage] YAPB as a command-line
+----------------------------------------------------------------------------------------------------
 
-가능한 명령 인자 형식
-$ main.exe rpc.grm 
-$ main.exe rpc.grm smallbasic.grm      (grm 파일이 둘 이상이면 -output 옵션을 사용 불가)
-$ main.exe rpc.grm -output prod_rules.txt action_table.txt goto_table.txt  
-$ main.exe -output prod_rules.txt action_table.txt goto_table.txt  rpc.grm
+-- 1) Generate LALR parser automation from one or more grammar files
 
--}
+--    $ stack exec -- yapb-exe rpc.grm 
+--    $ stack exec -- yapb-exe rpc.grm smallbasic.grm      
+
+-- 2) Write LALR parser automation from one or more grammar files into specified files with -output
+--    (Note: only one grm file must be specified with -output option)
+
+--    $ stack exec -- yapb-exe  rpc.grm -output prod_rules.txt action_table.txt goto_table.txt  
+--    $ stack exec -- yapb-exe  -output prod_rules.txt action_table.txt goto_table.txt  rpc.grm
+--    $ stack exec -- yapb-exe  -output prod_rules.txt action_table.txt goto_table.txt  rpc.grm
+
+-- 3) Show LALR items from one or more grammar files
+
+--    $ stack exec -- yapb-exe -show-items rpc.grm
+--    $ stack exec -- yapb-exe -show-items rpc.grm smallbasic.grm
+
+----------------------------------------------------------------------------------------------------
+
 _main = do
   args <- getArgs
   -- mapM_ putStrLn args
@@ -44,6 +59,7 @@ _main = do
   case cmd of 
     CmdError msg -> putStrLn msg
     CmdGrmFiles fileNames -> mapM_ (f stdout) fileNames 
+    CmdShowItems fileNames -> mapM_ (prItemsFrom stdout) fileNames 
     CmdGrmWithOption (Just fileName) prod_rule action_tbl goto_tbl -> do
       writeParseTable fileName prod_rule action_tbl goto_tbl
       putStrLn "Done"
@@ -157,6 +173,21 @@ prSplk' ((index0,index2,item0,item0closure,item1,item2):splk') = do
 -- __mainLalr1 g = do   
 --   prLALRParseTable stdout (calcLALRParseTable g)
 
+prItemsFrom h gFile =
+   do grammarInfo <- readFile gFile
+
+      let (cfg, tokenAttrs, prodRuleAttrs, eot) =
+            case readMaybe grammarInfo :: Maybe (CFG, TokenAttrs, ProdRuleAttrs, String) of
+              Just ctp -> ctp
+              Nothing -> error $ "[GenLRParserTable:prItemsFrom] unexpected "
+                                    ++ "cfg, token attrs, and prod rules attrs"
+
+      (items, _, _, _, _) <- calcEfficientLALRParseTable cfg eot tokenAttrs
+                                  (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
+
+      hPutStrLn h (show (length items) ++ " states")
+      prItems stdout items
+      
 --
 indexPrule :: AUGCFG -> ProductionRule -> Int
 indexPrule augCfg prule = indexPrule' prules prule 0
