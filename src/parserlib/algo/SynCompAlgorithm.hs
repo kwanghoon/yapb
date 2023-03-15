@@ -1,12 +1,21 @@
-module SynCompAlgorithm(chooseCompCandidatesFn, defaultCompCandidatesFn) where
+module SynCompAlgorithm(
+  chooseCompCandidatesFn, 
+  defaultCompCandidatesFn, 
+  collectStates) where
 
+-- deprecated
 import qualified SynCompAlgoBU as BU
 import qualified SynCompAlgoTD as TD
 import qualified SynCompAlgoPEPM as PEPM
 
--- For experiment
+-- used
 import qualified SynCompAlgoBUTree as BUTree
+-- inefficient
 import qualified SynCompAlgoBUTreeNested as BUTreeNested
+
+-- used for collecting states
+import qualified SynCompAlgoBUTreeInitialStates as BUTreeStates
+
 
 import TokenInterface
 import Config
@@ -44,3 +53,14 @@ defaultCompCandidatesFn :: (TokenInterface token, Typeable token, Typeable ast, 
         -> IO ([[Candidate]], Bool)
 defaultCompCandidatesFn = BU.compCandidates
 
+-- Todo: Currently, it returns a list of state numbers
+--       as a list of [TerminalSymbol "s_1", ..., TerminalSymbol "s_n"]
+--       Should be fixed!
+collectStates :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
+   CompCandidates token ast
+        -> Int
+        -> [Candidate]
+        -> Int
+        -> Stack token ast
+        -> IO ([[Candidate]], Bool)
+collectStates = BUTreeStates.compCandidates  

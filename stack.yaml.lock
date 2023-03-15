@@ -3,18 +3,11 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages:
-- completed:
-    hackage: timeit-2.0@sha256:35d7c3ce64b458bbb1200320203f21281c975c85acc636a634500601c474fded,1197
-    pantry-tree:
-      size: 259
-      sha256: c37c98f2173d5c1a651483b90163cdb9384a6d76b0adb7dfad58cbc9e9b7be86
-  original:
-    hackage: timeit-2.0
+packages: []
 snapshots:
 - completed:
-    size: 586069
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/14.yaml
-    sha256: 87842ecbaa8ca9cee59a7e6be52369dbed82ed075cb4e0d152614a627e8fd488
+    sha256: 1b1cb989b5728e6aee80592e84a3799d4b8c0fe1ea1f29dedfaf4cdd9c0f51c0
+    size: 649572
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/14.yaml
   original:
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/14.yaml
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/14.yaml

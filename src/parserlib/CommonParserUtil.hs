@@ -670,16 +670,26 @@ handleParseError compCandidatesFn hpeOption parseError =
              Just config -> hpeOption{debugFlag = config_DEBUG config
                                       ,presentation = config_PRESENTATION config}
 
-     unwrapParseError compCandidatesFn hpeOption' parseError
+     let (state, stk, automaton, lp_state, maybeStatus) = infoFromParseError parseError 
+     arrivedAtTheEndOfSymbol compCandidatesFn hpeOption' state stk automaton lp_state maybeStatus
 
-  --
-unwrapParseError compCandidatesFn hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
-    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-    arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
+    --  unwrapParseError compCandidatesFn hpeOption' parseError
 
-unwrapParseError compCandidatesFn hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
-    let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
-    arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
+infoFromParseError (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = 
+  let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules} in
+    (state, stk, automaton, lp_state, maybeStatus)
+infoFromParseError (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) =
+  let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules} in
+    (state, stk, automaton, lp_state, maybeStatus)
+
+--
+-- unwrapParseError compCandidatesFn hpeOption (NotFoundAction _ state stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
+--     let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+--     arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
+
+-- unwrapParseError compCandidatesFn hpeOption (NotFoundGoto state _ stk _actTbl _gotoTbl _prodRules lp_state maybeStatus) = do
+--     let automaton = Automaton {actTbl=_actTbl, gotoTbl=_gotoTbl, prodRules=_prodRules}
+--     arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state maybeStatus
 
 --
 arrivedAtTheEndOfSymbol compCandidatesFn hpeOption state stk automaton lp_state@(_,_,_,"") maybeStatus =  -- [$]
