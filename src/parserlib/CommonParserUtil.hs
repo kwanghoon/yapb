@@ -329,7 +329,8 @@ runAutomaton flag amSpec init_lp_state lexer =
             if not collectFlag
             then runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
             else do runYapbAutomatonWithLog flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)
-                    runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)  -- ToDo: always parse error!!
+                    error "This is normally terminated after collection. Don't panic!"
+                    -- runYapbAutomaton flag amSpec{am_time=(am_time amSpec){am_cputime=start_cputime}} (lexer flag)  -- ToDo: always parse error!!
 
 runYapbAutomaton
   :: (Monad m,
