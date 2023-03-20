@@ -45,6 +45,17 @@ leafs (Node leaf subtrees : forest) =
   leafs subtrees ++ leafs forest -- The leaf is not included as a candidate!
                                  -- i.e., leafs (Node leaf []) = []
 
+topSymbol :: CandidateTree -> String
+topSymbol (Leaf cand) =
+  case cand of
+    TerminalSymbol s -> s
+    NonterminalSymbol s -> s
+    
+topSymbol (Node cand _) =
+  case cand of
+    TerminalSymbol s -> s
+    NonterminalSymbol s -> s
+
 --
 candidateLeaf :: Candidate -> CandidateTree
 candidateLeaf cand = Leaf cand

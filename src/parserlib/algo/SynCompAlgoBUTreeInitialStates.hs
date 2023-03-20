@@ -53,7 +53,7 @@ extendedCompCandidates ccOption symbols state stk = do
   let automaton  = cc_automaton ccOption
 
   stateList <- repReduce debugFlag automaton symbols state stk
-  return stateList
+  return (nub stateList)
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
@@ -72,7 +72,7 @@ repReduce flag automaton symbols state stk =
       case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
                         , state==s
                         , isReducible productionRules prnum stk] of
-          []        -> return [state] 
+          []        -> return []
 
           prnumList -> 
             do listOfList <- mapM (simulReduce flag automaton symbols state stk) prnumList
@@ -94,32 +94,31 @@ simulReduce flag automaton symbols state stk prnum =
       
       rhsLength = length rhs
   in
-    -- debug flag (prlevel level ++ "REDUCE " ++ 
-    --             showProductionRule (productionRules !! prnum))   $ 
-    -- debug flag (prlevel level ++ " - prod rule: " ++ show (productionRules !! prnum)) $ 
-    -- debug flag (prlevel level ++ " - State " ++ show state) $ 
-    -- debug flag (prlevel level ++ " - Stack " ++ prStack stk) $ 
-    -- debug flag (prlevel level ++ " - Search state: " ++ show (cc_searchState ccOption)) $ 
-    -- debug flag "" $ 
+    debug flag ("REDUCE " ++ 
+                 showProductionRule (productionRules !! prnum))   $ 
+    debug flag (" - prod rule: " ++ show (productionRules !! prnum)) $ 
+    debug flag (" - State " ++ show state) $ 
+    debug flag (" - Stack " ++ prStack stk) $ 
+    debug flag (" - Symbols: " ++ show (map topSymbol symbols)) $ 
+    debug flag "" $ 
 
-    do 
-      let stk1 = drop (rhsLength*2) stk
-      let topState = currentState stk1
-      let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
-            Just state -> state
-            Nothing -> error $ "[simulReduce] Must not happen: lhs: "
-                                ++ lhs ++ " state: " ++ show topState
-      let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
-      let stk3 = push (StkState toState) stk2
+      do 
+         let stk1 = drop (rhsLength*2) stk
+         let topState = currentState stk1
+         let toState = case lookupGotoTable (gotoTbl automaton) topState lhs of
+              Just state -> state
+              Nothing -> error $ "[simulReduce] Must not happen: lhs: "
+                                  ++ lhs ++ " state: " ++ show topState
+         let stk2 = push (StkNonterminal Nothing lhs) stk1  -- ast
+         let stk3 = push (StkState toState) stk2
 
-      let reducedSymbols =
-            if rhsLength <= length symbols
-            then let revSymbols = reverse symbols
-                     children   = reverse (take rhsLength revSymbols)
-                     therest    = drop rhsLength $ revSymbols
-                 in  reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
-            else symbols
+         let reducedSymbols =
+              if rhsLength <= length symbols
+              then let revSymbols = reverse symbols
+                       children   = reverse (take rhsLength revSymbols)
+                       therest    = drop rhsLength $ revSymbols
+                   in  reverse $ (candidateNode (NonterminalSymbol lhs) children :) $ therest
+              else symbols
 
-      repReduce flag automaton reducedSymbols toState stk3
-
-
+         states <- repReduce flag automaton reducedSymbols toState stk3
+         return (state : states)
