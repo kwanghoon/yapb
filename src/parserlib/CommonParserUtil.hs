@@ -825,8 +825,8 @@ stringfyCandidates convFun candidates = map stringfyCandidate candidates
     stringfyCandidate (GrayCandidate sym line col) = Gray (strCandidate sym) line col
     stringfyCandidate (WhiteCandidate sym) = White (strCandidate sym)
 
-    strCandidate (TerminalSymbol s) = s
-    strCandidate (NonterminalSymbol s) = convFun s -- "..." -- ++ s ++ "..."
+    strCandidate (TerminalSymbol s) = "Terminal " ++ s  -- Todo: Emacs interface should be changed!!
+    strCandidate (NonterminalSymbol s) = "Nonterminal " ++ convFun s -- "..." -- ++ s ++ "..."
 
 collapseCandidates [] = []
 collapseCandidates [a] = [a]
