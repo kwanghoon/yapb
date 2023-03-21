@@ -53,7 +53,7 @@ extendedCompCandidates ccOption symbols state stk = do
   let automaton  = cc_automaton ccOption
 
   stateList <- repReduce debugFlag automaton symbols state stk
-  return (nub stateList)
+  return (nub (state : stateList) )
 
 repReduce
   :: (TokenInterface token, Typeable token, Typeable ast, Show token, Show ast) =>
