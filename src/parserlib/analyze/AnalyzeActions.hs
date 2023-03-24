@@ -10,6 +10,8 @@ import qualified Data.Map as Map
 import qualified Data.Bifunctor
 import Test.Hspec (xcontext)
 
+import Debug.Trace (trace)
+
 analyzeActions :: TokenInterface token => ActionLogs token -> IO ()
 analyzeActions logs =
     let map = collect logs in
@@ -65,9 +67,13 @@ onLogs state logs map =
         newMap = if null candidate then map
                  else Map.insertWith f state foundMap map
     in
-        case maybeNextState of
-            Just nextState -> onLogs nextState nextLogs newMap
-            Nothing -> newMap
+        -- trace ("onLogs: " ++ show state ++
+        --        "        " ++ showActionLog (head logs) ++
+        --        "        " ++ show candidate ++
+        --        "\n") $
+           case maybeNextState of
+               Just nextState -> onLogs nextState nextLogs newMap
+               Nothing -> newMap
 
 getNextState :: [ActionLog token] -> (Maybe State, [ActionLog token])
 getNextState (LogShift state terminal : logs) = (Just state, logs)
@@ -78,10 +84,13 @@ getNextState (LogReduce prodRuleNum prodRuleText _ : logs) = getNextState logs
 getNextState [] = (Nothing, [])
 
 
+--
+-- initRepReduce: shift^* Reduce 했을 때 shift^*에 의해 탐색된 심볼들을 candidate로 한다!
+--
 initRepReduce :: TokenInterface token => State -> [ActionLog token] -> CandidateForest
 initRepReduce currentState
     (LogReduce prodRuleNum prodRuleText _ : LogGoto state nonTerminal : logs)
-        = initRepReduce state logs
+        = [] -- initRepReduce state logs
 
 initRepReduce currentState
     (LogReduce prodRuleNum prodRuleText _ : logs)
@@ -117,4 +126,8 @@ repShiftOrGoto currentState symTrees logs
 
 -- | simulReduce is only called from repShiftOrGoto when length symTrees > rhsLength !!
 simulReduce symTrees rhsLength leafWithNonterminal =
+    -- trace ("simulReduce: " ++ show symTrees ++
+    --         "        " ++ show rhsLength ++
+    --         "        " ++ show leafWithNonterminal ++
+    --         "\n") $
     reverse (drop rhsLength (reverse symTrees)) ++ leafWithNonterminal
