@@ -209,8 +209,14 @@ matchLexSpec debugFlag eot lexerspec =
 
                      let str_maybeTok = maybe "Nothing" fromToken maybeTok
 
-                     (state_parm_, _, _, _) <- ST.get
-                     ST.put (state_parm_, line_, col_, post)
+                     (state_parm_, line__, col__, text__) <- ST.get
+
+                     -- if the lexer action makes the cursor move further away
+                     -- than the matched text use that location!
+                     if line_ <= line__ && col_ <= col__ then
+                        ST.put (state_parm_, line__, col__, text__)
+                     else
+                        ST.put (state_parm_, line_, col_, post)
 
                      debug debugFlag "" $
 
