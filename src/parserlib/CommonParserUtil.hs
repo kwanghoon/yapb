@@ -168,8 +168,8 @@ matchLexSpec :: (Monad m, TokenInterface token) =>
   Bool -> token -> RegexprActionList token m a      -- token => End Of token!
        -> LexerParserMonad m a (MatchedToken token)
 
-matchLexSpec debugFlag eot lexerspec =
-  mls debugFlag eot lexerspec
+matchLexSpec debugFlag eot _lexerspec =
+  mls debugFlag eot _lexerspec
 
   where
      mls
@@ -178,9 +178,9 @@ matchLexSpec debugFlag eot lexerspec =
           -> token
           -> RegexprActionList token m a
           -> ST.StateT (LexerParserState a) m (MatchedToken token)
-     mls debugFlag eot lexerspec =
+     mls debugFlag eot __lexerspec =
        do (state_parm, line, col, text) <- ST.get
-          mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
+          mlsSub debugFlag eot __lexerspec (state_parm, line, col, text)
 
      mlsSub
        :: (Monad m, TokenInterface token) =>
@@ -190,43 +190,61 @@ matchLexSpec debugFlag eot lexerspec =
           -> LexerParserState a
           -> ST.StateT (LexerParserState a) m (MatchedToken token)
      mlsSub debugFlag eot lexerspec (state_parm, line, col, []) =
+      -- debug debugFlag ("mlsSub(1): []") $
        do ST.put (state_parm, line+1, 1, [])                  -- EOT at (line+1,1)?
           return (fromToken eot, Just eot, fromToken eot)
 
      mlsSub debugFlag eot [] (state_parm, line, col, text) = do
+      -- debug debugFlag ("mlsSub(2): no more lex spec" ++ show (take 30 text)) $
        throw (CommonParserUtil.LexError line col (takeRet 0 text))
 
-     mlsSub debugFlag eot ((aSpec,tokenBuilder):lexerspec) (state_parm, line, col, text) = do
-       let (pre, matched, post) = text =~ aSpec :: (String,String,String)
-       case pre of
-         "" -> let (line_, col_) = moveLineCol line col matched in
-                if line==line_ && col==col_
-                then
-                  throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
+     mlsSub debugFlag eot ((aSpec,tokenBuilder):lexerspec) (state_parm, line, col, text) =
+      -- debug debugFlag ("mlsSub(3): " ++ show (line,col) ++ take 30 text ++ " =~ " ++ aSpec) $
+       do
+        -- let (pre, matched, post) = text =~ ("^" ++ aSpec) :: (String,String,String) -- only from the beginning
+        let matched = text =~ ("\\`" ++ aSpec) :: String
+        -- debug debugFlag ("mlsSub(2): " ++ show aSpec) $      
 
-                else
-                  do maybeTok <- tokenBuilder matched
+        case matched of
+	  "" ->
+	    -- debug debugFlag "(2): not matched" $
 
-                     let str_maybeTok = maybe "Nothing" fromToken maybeTok
+		   do
+		     mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
 
-                     (state_parm_, line__, col__, text__) <- ST.get
+	  _ ->
+	    -- debug debugFlag ("(1) matched: =>|" ++ matched ++ "|<=") $ 
 
-                     -- if the lexer action makes the cursor move further away
-                     -- than the matched text use that location!
-                     if line_ <= line__ && col_ <= col__ then
-                        ST.put (state_parm_, line__, col__, text__)
-                     else
-                        ST.put (state_parm_, line_, col_, post)
+		 let (line_, col_) = moveLineCol line col matched
+                     post = drop (length matched) text		 
+                 in		 
+		 if line==line_ && col==col_
+		 then
+		   throw (CommonParserUtil.LexError line col ("Found RegExp for \"\"? " ++ aSpec))
+		 else
+		   do maybeTok <- tokenBuilder matched
 
-                     debug debugFlag "" $
+		      let str_maybeTok = maybe "Nothing" fromToken maybeTok
 
-                      debug debugFlag ("Lexer: - " ++ show aSpec ++ " " ++ matched ++ " at " ++ show (line, col)) $
-                       debug debugFlag ("       - returns: " ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
+		      (state_parm__, line__, col__, text__) <- ST.get
 
-                        return (matched, maybeTok, aSpec)
+		      -- if the lexer action makes the cursor move further away
+		      -- than the matched text use that location!
+		      if {- isNothing maybeTok && -} (line /= line__ || col /= col__) then
+		      -- if line <= line__ && col <= col__ then
+			 ST.put (state_parm__, line__, col__, text__)
+		      else
+			 ST.put (state_parm__, line_, col_, post)
 
-         _  -> mlsSub debugFlag eot lexerspec (state_parm, line, col, text)
+		      (_, lineFinal, colFinal, textFinal) <- ST.get
+		      -- debug debugFlag
+		      --    ("Lexer: - "
+                      --       ++ "moved to " ++ show (lineFinal, colFinal) ++ "\n"
+                      --       ++ "next text: " ++ textFinal ++ "\n"
+		      --       ++ "       - returns: "
+		      --       ++ if isNothing maybeTok then "Nothing" else str_maybeTok) $
 
+                      return (matched, maybeTok, aSpec)
 
 moveLineCol :: Line -> Column -> String -> (Line, Column)
 moveLineCol line col ""          = (line, col)
