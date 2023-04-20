@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 69e71572fcd2dd147a57f26f62b1e2b1e9563d238f583becb584a6429f9263e5
+-- hash: f45ba49b3085c011b0773eae3f305ea98dac751d9d7d3275a049c97949e1976a
 
 name:           yapb
 version:        0.2.8
@@ -173,6 +173,25 @@ executable parser-exe
   hs-source-dirs:
       app/parser
       app/parser/ast
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , deepseq >=1.4.4.0
+    , hspec
+    , mtl
+    , regex-tdfa
+    , timeit >=2.0
+    , transformers
+    , yapb
+  default-language: Haskell2010
+
+executable succparsed-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_yapb
+  hs-source-dirs:
+      util
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5

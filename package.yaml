@@ -117,6 +117,22 @@ executables:
     - regex-tdfa
     - yapb
 
+# ----------------------------------------
+# -- Utiliyt4: filtering after collecting
+# ----------------------------------------
+  succparsed-exe:
+    main:                Main.hs
+    source-dirs:
+    - util
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - regex-tdfa
+    - yapb
+
+
 # ---------------------------------
 # -- Example1: An arithmetic parser
 # ---------------------------------
