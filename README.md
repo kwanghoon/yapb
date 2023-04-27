@@ -34,8 +34,16 @@
 - As a tutorial, the most up-to-date examples are available in app/{parser,ambiguous,error,syntaxcompletion}.
 - [For parser: Parser generators sharing LR automaton generators and accepting general purpose programming language-based specifications](http://swlab.jnu.ac.kr/paper/kiise202001.pdf) Written in Korean.
 - [For syntax complection with YAPB-0.1.2:  A text-based syntax completion method using LR parsing (PEPM 2021)](http://swlab.jnu.ac.kr/paper/pepm2021final.pdf).
+- For syntax complection with YAPB-0.2.6:  A text-based syntax completion method using LR parsing and its evaluation (SCP 2023, A journal version of PEPM 2021). Will be available soon.
 
 
+### A list of benchmarks and YAPB version For the SCP paper (Science of Computer Programming 2023)
+- [YAPB-0.2.6](https://github.com/kwanghoon/yapb/releases/tag/v0.2.6)
+- [arith](https://github.com/kwanghoon/arith/commit/2c008287902df38ea7429f61990d05a8558eefe9)
+- [smllike](https://github.com/kwanghoon/smllike/commit/ea5f3dcbbf0535110b1041b58aa12b1100c6ed13)
+- [sbparser](https://github.com/kwanghoon/sbparser/commit/7c1a714de20d613b705e440246c2b637b5abcbc3)
+- [c11parser](https://github.com/kwanghoon/c11parser/commit/daa6a4b617669583ff8fbd21e2c48b8fbf78d3a6)
+- [haskellparser](https://github.com/kwanghoon/haskellparser/commit/95af10e75f4fd45e0e33f5f885f757b8c466a90b)
 
 
 ### Reference

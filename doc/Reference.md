@@ -3,6 +3,7 @@
 
 ### Documents
 - [Parser generators sharing LR automaton generators and accepting general-purpose programming language-based specifications, J. of KIISE, 47(1), January 2020](http://swlab.jnu.ac.kr/paper/kiise202001.pdf) Written in Korean.
+- For syntax complection with YAPB-0.2.6:  A text-based syntax completion method using LR parsing and its evaluation (SCP 2023, A journal version of PEPM 2021). Will be available soon.
 - [For syntax complection with YAPB-0.1.2:  A text-based syntax completion method using LR parsing (PEPM 2021)](http://swlab.jnu.ac.kr/paper/pepm2021final.pdf).
 
 - C++/Java/Python parser builder systems using YAPB
