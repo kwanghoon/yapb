@@ -72,7 +72,7 @@ repReduce flag automaton symbols state stk =
       case nub [prnum | ((s,lookahead),Reduce prnum) <- actionTable
                         , state==s
                         , isReducible productionRules prnum stk] of
-          []        -> return []
+          []        -> return [state] -- Fixed: []
 
           prnumList -> 
             do listOfList <- mapM (simulReduce flag automaton symbols state stk) prnumList
