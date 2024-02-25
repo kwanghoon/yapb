@@ -93,11 +93,18 @@ printResult stateCandidate =   -- [ (State, [ (CandidateForest, Integer) ] ) ]
                putStrLn ""            
 
         unterminal (TerminalSymbol (Terminal text line col maybeToken)) = 
-             show line ++ "," ++ show col ++ ": " ++ text ++ "\n"
+             show line ++ "," ++ show col ++ ": " ++ filterTokenText text ++ "\n"
         unterminal _ = error "unlunterminal: expected TerminalSymbol (Terminal ...)"
 
         prSymbolWithSp sym = sym ++ " "
 
+filterTokenText :: String -> String
+filterTokenText [] = []
+filterTokenText (c:cs) 
+    | c == '\n' = '\\' : 'n' : filterTokenText cs
+    | c == '\t' = '\\' : 't' : filterTokenText cs
+    | c == '\r' = '\\' : 'r' : filterTokenText cs
+    | otherwise = c : filterTokenText cs        
 
 collect :: TokenInterface token => ActionLogs token ->[(State, [CandidateTree token])]
 collect logs =
