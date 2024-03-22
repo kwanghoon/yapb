@@ -77,17 +77,20 @@ analyzeActions logs =
 printNoLn :: Show a => a -> IO ()
 printNoLn = putStr . show
 
-printResult :: TokenInterface token => [(State, [CandidateTree token])] -> IO ()
+printResult :: TokenInterface token => [(State, ([CandidateTree token], Int))] -> IO ()
 printResult stateCandidate =   -- [ (State, [ (CandidateForest, Integer) ] ) ]
     mapM_ pr stateCandidate
     where
-        pr (state, candForest) = -- state candidate count
+        pr (state, (candForest, prodRuleNum)) = -- state candidate count
             do printNoLn state
                putStr " "
                putStr (concatMap prSymbolWithSp $ map topSymbol candForest)
                -- putStr " "
                -- printNoLn count
                putStrLn ""
+               putStr " "
+               putStr "PR# "
+               putStrLn (show prodRuleNum)
                putStr " "
                putStr (concatMap prSymbolWithSp $ map unterminal $ leafs candForest)
                putStrLn ""            
@@ -106,7 +109,7 @@ filterTokenText (c:cs)
     | c == '\r' = '\\' : 'r' : filterTokenText cs
     | otherwise = c : filterTokenText cs        
 
-collect :: TokenInterface token => ActionLogs token ->[(State, [CandidateTree token])]
+collect :: TokenInterface token => ActionLogs token ->[(State, ([CandidateTree token], Int))]
 collect logs =
     let initState = 0
         map = onLogs initState logs []
@@ -115,11 +118,11 @@ collect logs =
 
 onLogs :: TokenInterface token => State -- ^ 
   -> [ActionLog token] -- ^ 
-  -> [(State, [CandidateTree token])] -- ^ state |-> { candidate1 |-> n1, ..., candidatek |-> nk }
-  -> [(State, [CandidateTree token])]
+  -> [(State, ([CandidateTree token], Int))] -- ^ state |-> { candidate1 |-> n1, ..., candidatek |-> nk }
+  -> [(State, ([CandidateTree token], Int))]
 onLogs state [] map = map
 onLogs state logs map =
-    let candidate = initRepReduce state logs
+    let (candidate, prodRuleNum) = initRepReduce state logs
         (maybeNextState, nextLogs) = getNextState logs
 
         -- foundMap = Map.fromList [ (candidate,1) ]
@@ -132,7 +135,7 @@ onLogs state logs map =
         -- newMap = if null candidate then map
         --          else Map.insertWith f state foundMap map
         newMap = if null candidate then map
-                 else map ++ [(state, candidate)]
+                 else map ++ [(state, (candidate, prodRuleNum))]
     in
         -- trace ("onLogs: " ++ show state ++
         --        "        " ++ showActionLog (head logs) ++
@@ -154,10 +157,10 @@ getNextState [] = (Nothing, [])
 --
 -- initRepReduce: shift^* Reduce 했을 때 shift^*에 의해 탐색된 심볼들을 candidate로 한다!
 --
-initRepReduce :: TokenInterface token => State -> [ActionLog token] -> [CandidateTree token]
+initRepReduce :: TokenInterface token => State -> [ActionLog token] -> ([CandidateTree token], Int)
 initRepReduce currentState
     (LogReduce prodRuleNum prodRuleText _ : LogGoto state nonTerminal : logs)
-        = [] -- initRepReduce state logs
+        = ([], -1) -- initRepReduce state logs
 
 initRepReduce currentState
     (LogReduce prodRuleNum prodRuleText _ : logs)
@@ -168,14 +171,14 @@ initRepReduce currentState
 initRepReduce currentState logs = repShiftOrGoto currentState [] logs
 
 
-repShiftOrGoto :: TokenInterface token => State -> [CandidateTree token] -> [ActionLog token] -> [CandidateTree token]
+repShiftOrGoto :: TokenInterface token => State -> [CandidateTree token] -> [ActionLog token] -> ([CandidateTree token], Int)
 repShiftOrGoto currentState symTrees
     (LogShift state terminal : logs) =
         repShiftOrGoto state (symTrees ++ [Leaf (TerminalSymbol terminal)]) logs
 
 repShiftOrGoto currentState symTrees
     (LogReduce prodRuleNum prodRuleText rhsLength : LogGoto state nonterminal : logs) =
-        if length symTrees <= rhsLength then symTrees
+        if length symTrees <= rhsLength then (symTrees, prodRuleNum)
         else repShiftOrGoto state
                 (simulReduce symTrees rhsLength (NonterminalSymbol nonterminal)) logs
 
@@ -184,7 +187,7 @@ repShiftOrGoto currentState symTrees (LogReduce prodRuleNum prodRuleText _ : log
                     ++ if null logs then "[]" else showActionLog (head logs)
                     ++ " at state " ++ show currentState
 
-repShiftOrGoto currentState symTrees (LogAccept : logs) = []
+repShiftOrGoto currentState symTrees (LogAccept : logs) = ([], -1) -- [] should not be counted as a candidate!
 
 repShiftOrGoto currentState symTrees logs
     =  error $ "[repShiftOrGoto] Unexpected logs: "
