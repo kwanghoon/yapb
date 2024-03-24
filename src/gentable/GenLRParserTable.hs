@@ -50,6 +50,11 @@ import System.IO
 --    $ stack exec -- yapb-exe -show-items rpc.grm
 --    $ stack exec -- yapb-exe -show-items rpc.grm smallbasic.grm
 
+-- 4) Show simple structural candidates from LALR items
+
+--    $ stack exec -- yapb-exe -show-candidates rpc.grm
+--    $ stack exec -- yapb-exe -show-candidates rpc.grm smallbasic.grm
+
 ----------------------------------------------------------------------------------------------------
 
 _main = do
@@ -60,6 +65,7 @@ _main = do
     CmdError msg -> putStrLn msg
     CmdGrmFiles fileNames -> mapM_ (f stdout) fileNames 
     CmdShowItems fileNames -> mapM_ (prItemsFrom stdout) fileNames 
+    CmdShowCandidates fileNames -> mapM_ (prCandidatesFrom stdout) fileNames 
     CmdGrmWithOption (Just fileName) prod_rule action_tbl goto_tbl -> do
       writeParseTable fileName prod_rule action_tbl goto_tbl
       putStrLn "Done"
@@ -187,7 +193,47 @@ prItemsFrom h gFile =
 
       hPutStrLn h (show (length items) ++ " states")
       prItems stdout items
-      
+
+prCandidatesFrom h gFile =
+   do grammarInfo <- readFile gFile
+
+      let (cfg, tokenAttrs, prodRuleAttrs, eot) =
+            case readMaybe grammarInfo :: Maybe (CFG, TokenAttrs, ProdRuleAttrs, String) of
+              Just ctp -> ctp
+              Nothing -> error $ "[GenLRParserTable:prItemsFrom] unexpected "
+                                    ++ "cfg, token attrs, and prod rules attrs"
+
+      (itemss, prules, _, _, _) <- calcEfficientLALRParseTable cfg eot tokenAttrs
+                                    (setProdRuleAttrs cfg tokenAttrs prodRuleAttrs)
+
+      hPutStrLn h (show (length itemss) ++ " states")
+      prCandidates stdout itemss prules     
+
+prCandidates h itemss prules = mapM_ prC $ zip [0..] itemss
+   where
+      prC (state, items) = 
+        do hPutStrLn h ("I" ++ show state ++ ":")
+           mapM_ prI $ nubBy f items
+           hPutStrLn h ""
+
+      f (Item prodRule1 pos1 _) (Item prodRule2 pos2 _) =
+        prodRule1 == prodRule2 && pos1 == pos2
+
+      prI (Item prodRule pos _) = 
+       hPutStrLn h $ show n ++ " " ++ concat (map tOrN candidate)
+        where ProductionRule lhs rhsSymbols = prodRule
+              n = lookup prodRule
+              candidate = drop pos rhsSymbols
+              tOrN (Terminal t) = "T " ++ t ++ " "
+              tOrN (Nonterminal nt) = "N " ++ nt ++ " "
+
+      nPrules = zip [0..] prules
+
+      lookup prule = 
+        case [ n | (n, prule') <- nPrules, prule==prule'] of
+          n:_ -> n
+          _   -> error "prCandidates: lookup: something wrong"
+
 --
 indexPrule :: AUGCFG -> ProductionRule -> Int
 indexPrule augCfg prule = indexPrule' prules prule 0

@@ -5,6 +5,7 @@ data Cmd =
     |   CmdGrmWithOption (Maybe String) String String String 
             -- a.grm prod_rules.txt action_table.txt goto_table.txt
     |   CmdShowItems [String] -- a.grm b.grm c.grm ...
+    |   CmdShowCandidates [String]  -- a.grm b.grm c.grm ...
     |   CmdError String -- error message
 
 getCmd :: [String] -> Cmd
@@ -31,6 +32,8 @@ collectInfo ("-output":ss) =
                     CmdError $ "Only one grammar file can be applied with -output"
                 CmdShowItems _ -> 
                     CmdError $ "Mixed use of -output with -show-items is not allowed"
+                CmdShowCandidates _ -> 
+                    CmdError $ "Mixed use of -output with -show-candidates is not allowed"
                 CmdGrmWithOption _ _ _ _ -> 
                     CmdError $ "Only one use of -output is allowed"
                 CmdError msg -> cmd
@@ -45,9 +48,24 @@ collectInfo ("-show-items":ss) =
             CmdGrmFiles fileNames -> 
                 CmdShowItems fileNames
             CmdShowItems _ -> 
-                    CmdError $ "Only one use of -show-items is allowed"
+                CmdError $ "Only one use of -show-items is allowed"
+            CmdShowCandidates _ -> 
+                CmdError $ "Mixed use of -show-items with -show-candidates is not allowed"
             CmdGrmWithOption _ _ _ _ -> 
                 CmdError $ "Mixed use of -show-items with -output is not allowed"
+            CmdError msg -> cmd
+
+collectInfo ("-show-candidates":ss) =
+    let cmd = collectInfo ss in
+        case cmd of
+            CmdGrmFiles fileNames -> 
+                CmdShowCandidates fileNames
+            CmdShowItems _ -> 
+                CmdError $ "Mixed use of -show-candidates with -show-items is not allowed"                
+            CmdShowCandidates _ -> 
+                CmdError $ "Only one use of -show-candidates is allowed"
+            CmdGrmWithOption _ _ _ _ -> 
+                CmdError $ "Mixed use of -show-candidates with -output is not allowed"
             CmdError msg -> cmd
 
 collectInfo (s:ss) = 
@@ -55,6 +73,7 @@ collectInfo (s:ss) =
     in  case cmd of
             CmdGrmFiles fileNames -> CmdGrmFiles (s:fileNames)
             CmdShowItems fileNames -> CmdShowItems (s:fileNames)
+            CmdShowCandidates fileNames -> CmdShowCandidates (s:fileNames)
             CmdGrmWithOption Nothing f1 f2 f3 -> 
                 CmdGrmWithOption (Just s) f1 f2 f3
             CmdGrmWithOption (Just _) _ _ _ -> 
