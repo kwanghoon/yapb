@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f45ba49b3085c011b0773eae3f305ea98dac751d9d7d3275a049c97949e1976a
+-- hash: eea51aa4458115fac5aba00e19cf8745e4428075830bebbafd5796e259f81d6f
 
 name:           yapb
 version:        0.2.8
@@ -103,6 +103,32 @@ executable ambiguous-exe
   hs-source-dirs:
       app/ambiguous
       app/ambiguous/ast
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , deepseq >=1.4.4.0
+    , hspec
+    , mtl
+    , regex-tdfa
+    , timeit >=2.0
+    , transformers
+    , yapb
+  default-language: Haskell2010
+
+executable comment-exe
+  main-is: Main.hs
+  other-modules:
+      Lexer
+      Parser
+      ParserSpec
+      Run
+      Token
+      Expr
+      Paths_yapb
+  hs-source-dirs:
+      app/comment
+      app/comment/ast
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5

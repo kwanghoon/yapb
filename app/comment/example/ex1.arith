@@ -1,0 +1,8 @@
+// comment example
+
+/* multiline comment
+  1)
+  2)
+*/
+
+1 + 2 - 3 * 4 / 5  // at the end of this line
